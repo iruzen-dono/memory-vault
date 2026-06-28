@@ -15,7 +15,6 @@ Be excellent. This is a small, early project. Every contributor shapes the cultu
 | Web (Next.js) | Memory Registry web hub |
 | DevOps | CI/CD, release automation, PyPI publishing |
 | Docs | Tutorials, examples, integration guides |
-| Rust (future) | High-performance pack processing |
 | Any | Bug reports, feature requests, tests |
 
 ## Project Structure
@@ -25,8 +24,7 @@ memory-vault/
 ├── src/memory_vault/
 │   ├── core/            # Format: manifest, pack, builder
 │   ├── cli/             # Typer CLI
-│   ├── formats/         # Hermes-specific readers
-│   └── vault/           # Obsidian sync
+│   └── __main__.py      # `python -m memory_vault` entry point
 ├── tests/               # Pytest suite
 ├── docs/                # Architecture, guides
 └── .github/             # CI, issue templates
@@ -53,10 +51,10 @@ mypy src/
 ## Design Principles
 
 1. **Local-first** — everything works offline, no server required
-2. **Composable** — each subsystem (profile, memory, skills) is optional in a pack
+2. **Context-focused** — capture the agent session (conversation, tool traces, artifacts, decisions), not raw memory dumps
 3. **Human-readable** — JSON and Markdown, not binary blobs
 4. **Agent-agnostic** — designed for Hermes first, but the format must work for any agent
-5. **No vendor lock** — the format is the standard, not the implementation
+5. **Portable** — a single `.hermes-memory` file contains everything needed to understand the session
 
 ## Pull Request Process
 
@@ -86,6 +84,6 @@ Examples:
 
 ## The Vision
 
-> Memory Vault is the **Git for agent memory**. Not locked to Hermes, not locked to one format, not locked to one backend. A standard that lets any AI agent carry its context across machines, share it with peers, and survive resets.
+> Memory Vault is a **Context Protocol** for AI agent sessions. One command turns any agent session into a portable `.hermes-memory` pack — conversation, tool traces, artifacts, decisions, and a handoff brief that lets another agent pick up exactly where you left off.
 
 We're early. Every commit counts.
