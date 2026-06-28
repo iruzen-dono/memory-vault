@@ -1,0 +1,60 @@
+[project]
+name = "memory-vault"
+version = "0.1.0"
+description = "Portable Context Protocol — package AI agent sessions into portable .hermes-memory packs"
+readme = "README.md"
+authors = [
+    { name = "iruzen", email = "iruzen@github.com" },
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["hermes", "ai-agent", "memory", "portable", "open-source"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "typer>=0.12,<1.0",
+    "pydantic>=2.0,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0,<9.0",
+    "mypy>=1.0,<2.0",
+    "ruff>=0.1,<1.0",
+]
+vault = [
+    "markdown>=3.5,<4.0",
+]
+all = ["memory-vault[vault]"]
+
+[project.urls]
+homepage = "https://github.com/iruzen-dono/memory-vault"
+repository = "https://github.com/iruzen-dono/memory-vault"
+documentation = "https://github.com/iruzen-dono/memory-vault/docs"
+
+[project.scripts]
+memory-vault = "memory_vault.cli.main:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
