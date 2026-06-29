@@ -22,12 +22,12 @@ Be excellent. This is a small, early project. Every contributor shapes the cultu
 ```
 memory-vault/
 ├── src/memory_vault/
-│   ├── core/            # Format: manifest, pack, builder
+│   ├── core/            # Format: llm, manifest, pack, builder, narrator, renderer, session_index
 │   ├── cli/             # Typer CLI
 │   └── __main__.py      # `python -m memory_vault` entry point
 ├── tests/               # Pytest suite
 ├── docs/                # Architecture, guides
-└── .github/             # CI, issue templates
+└── .github/             # CI (matrix: ubuntu + windows, pytest + ruff)
 ```
 
 ## Development Setup
@@ -42,9 +42,9 @@ pip install -e ".[dev]"
 pytest -v
 
 # Lint
-ruff check src/
+ruff check src/ tests/
 
-# Type-check
+# Type-check (if mypy is installed)
 mypy src/
 ```
 

@@ -41,19 +41,26 @@ Browse sessions with enriched titles (LLM-generated), search, export, and re-ind
 
 Press `i` to re-index a session, `e` to export, `Ctrl+P` to search.
 
-### 🧠 Smart Session Indexing (`memory-vault index`)
+| ### 🧠 Smart Session Indexing (`memory-vault index`)
 
-Generate descriptive titles and summaries for all your Hermes sessions using Cloudflare Workers AI. Configurable model via `--model` or `MEMORY_VAULT_INDEX_MODEL` env var.
+Generate descriptive titles and summaries for all your Hermes sessions using an LLM provider. Supports any OpenAI-compatible API and Cloudflare Workers AI out of the box.
 
 ```bash
-# Index all sessions
+# Index all sessions (auto-detects provider)
 memory-vault index
 
-# Re-index with a specific model
-MEMORY_VAULT_INDEX_MODEL="@cf/meta/llama-3.3-70b-instruct-fp8-fast" memory-vault index --force
+# Use Cloudflare Workers AI
+export CLOUDFLARE_ACCOUNT_ID="..."
+export CLOUDFLARE_API_TOKEN="..."
+memory-vault index --force
 
-# Only new sessions
-memory-vault index --new
+# Use any OpenAI-compatible API
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_API_KEY="sk-..."
+memory-vault index
+
+# Override the model per run
+MEMORY_VAULT_INDEX_MODEL="gpt-4o" memory-vault index
 ```
 
 ### 📦 Context Packs
@@ -107,10 +114,19 @@ memory-vault list-sessions
 
 ### 3. Index sessions (optional, for meaningful titles)
 
-Requires Cloudflare Workers AI credentials (`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` in env).
+Requires an LLM provider. By default tries `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` for Cloudflare Workers AI. Falls back gracefully with template titles.
 
 ```bash
+# Auto-detect Cloudflare Workers AI
 memory-vault index
+
+# Or set any OpenAI-compatible provider
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_API_KEY="sk-..."
+memory-vault index
+
+# Only new sessions (skip already-indexed)
+memory-vault index --new
 ```
 
 ### 4. Export a session
@@ -175,10 +191,11 @@ src/memory_vault/
 │   └── main.py           # Typer commands (export, info, import, list, search, render, index, browse)
 ├── core/
 │   ├── __init__.py
+│   ├── llm.py           # LLMProvider ABC + CloudflareAI + OpenAICompatibleProvider
 │   ├── manifest.py       # Manifest dataclass + serialization
 │   ├── pack.py           # ContextPack — in-memory representation + tar.gz I/O
 │   ├── builder.py        # ContextBuilder — reads Hermes sessions, builds packs
-│   ├── narrator.py       # CloudflareAI — wrapper for Cloudflare Workers AI LLM
+│   ├── narrator.py       # SessionNarrator — compresses conversations via LLM
 │   ├── renderer.py       # Export packs as Markdown or HTML
 │   ├── session_index.py  # SessionIndex — SQLite cache for LLM-enriched titles
 │   └── tui.py            # MemoryVaultTUI — Textual-based interactive browser

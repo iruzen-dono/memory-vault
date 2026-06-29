@@ -14,6 +14,16 @@ Memory Vault is a **Context Protocol** for AI agent sessions. It extracts the fu
 
 ## Core abstractions
 
+### LLMProvider (`core/llm.py`)
+
+Pluggable LLM abstraction that decouples indexing and narration from a specific backend.
+
+- **`LLMProvider`** (ABC) — defines `available()`, `generate()`, `default_model()`
+- **`CloudflareAI`** — speaks Cloudflare Workers AI REST API (`accounts/{id}/ai/v1`)
+- **`OpenAICompatibleProvider`** — speaks any OpenAI-compatible API (OpenAI, Together, Groq, etc.)
+
+Providers resolve credentials lazily in `available()` so importing the module never crashes on missing env vars. `SessionIndex` and `SessionNarrator` both take an `LLMProvider` instance via their constructor and fall back to template-based output when no provider is configured.
+
 ### Manifest (`core/manifest.py`)
 
 Every pack's identity. Contains:
