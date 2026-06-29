@@ -13,6 +13,7 @@ Uses Textual (https://textual.textualize.io) for a terminal UI.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from textual import work
@@ -30,8 +31,32 @@ from textual.widgets import (
 )
 
 from memory_vault.core.builder import ContextBuilder
+from memory_vault.core.llm import list_providers
 from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
 from memory_vault.core.session_index import SessionIndex
+
+# ── Provider status widget ───────────────────────────────────────────
+
+
+class ProviderStatus(Static):
+    """Shows the active LLM provider and its availability."""
+
+    def on_mount(self) -> None:
+        self.refresh_status()
+
+    def refresh_status(self) -> None:
+        try:
+            statuses = list_providers()
+            if not statuses:
+                self.update("[dim]LLM: none[/]")
+                return
+            # Show first available, or first overall
+            for name, avail in statuses.items():
+                icon = "✅" if avail else "❌"
+                self.update(f"[dim]LLM: {icon} {name}[/]")
+                return
+        except Exception:
+            self.update("[dim]LLM: ?[/]")
 
 # ── Session list widget ─────────────────────────────────────────────
 
@@ -165,6 +190,7 @@ class SessionBrowser(Screen):
         self._index = SessionIndex()
         self._sessions: list[dict] = []
         self._indexed_map: dict[str, dict] = {}
+        self._search_timer: float = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -172,6 +198,7 @@ class SessionBrowser(Screen):
             Vertical(
                 Label("[bold]Sessions[/]", id="list-title"),
                 Input(placeholder="Search sessions...", id="search-input"),
+                ProviderStatus(id="provider-status"),
                 ListView(id="session-list"),
                 id="left-panel",
             ),
@@ -264,7 +291,17 @@ class SessionBrowser(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search-input":
-            self.load_sessions(event.value.strip())
+            # 200ms debounce
+            self._search_timer = time.monotonic()
+            self.set_timer(0.25, self._debounced_search)
+
+    def _debounced_search(self) -> None:
+        elapsed = time.monotonic() - self._search_timer
+        if elapsed < 0.2:
+            return  # Another keystroke arrived, skip this stale shot
+        input_widget = self.query_one("#search-input", Input)
+        query = input_widget.value.strip()
+        self.load_sessions(query)
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item is None:
@@ -459,6 +496,10 @@ class MemoryVaultTUI(App):
     }
     #search-input {
         margin: 0 0 1 0;
+    }
+    #provider-status {
+        margin: 0 0 1 0;
+        text-style: dim;
     }
     ListView {
         height: 1fr;

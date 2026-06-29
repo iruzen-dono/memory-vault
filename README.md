@@ -33,21 +33,46 @@ Browse sessions with enriched titles (LLM-generated), search, export, and re-ind
 │ 20260629_06423 · deepseek-v4-flash   │
 │ The AI agent fixed config issues…    │
 │                                      │
+│ LLM: ✅ cloudflare                   │
 │ Memory Vault Dev                     │
 │ 20260628 · deepseek-v4-flash         │
 │ Developed and tested Memory Vault…   │
 └──────────────────────────────────────┘
 ```
 
-Press `i` to re-index a session, `e` to export, `Ctrl+P` to search.
+Press `i` to re-index a session, `e` to export, `Ctrl+P` to search. The footer shows your active LLM provider with its availability status.
 
-| ### 🧠 Smart Session Indexing (`memory-vault index`)
+### 📋 Provider Management (`memory-vault providers`)
+
+List all registered LLM providers and whether they're available (creds detected):
+
+```bash
+$ memory-vault providers
+Provider         Available
+──────────────── ────────────
+cloudflare       ✅
+anthropic        ❌
+openai           ❌
+```
+
+Persist a provider choice so you don't need env vars:
+
+```bash
+memory-vault config set llm.provider cloudflare
+memory-vault config get llm.provider   # cloudflare
+memory-vault config list               # show all stored config
+```
+
+### 🧠 Smart Session Indexing (`memory-vault index`)
 
 Generate descriptive titles and summaries for all your Hermes sessions using an LLM provider. Supports any OpenAI-compatible API and Cloudflare Workers AI out of the box.
 
 ```bash
 # Index all sessions (auto-detects provider)
 memory-vault index
+
+# Index with 4 parallel workers (much faster)
+memory-vault index --workers 4
 
 # Use Cloudflare Workers AI
 export CLOUDFLARE_ACCOUNT_ID="..."
@@ -82,7 +107,7 @@ A `.hermes-memory` file is a **tar.gz archive** with a clean layout:
 
 ```
 bot.hermes-memory/
-├── manifest.json           # Metadata: title, tags, source session, tool usage
+├── manifest.json           # Metadata: title, tags, source session, git commit, tool usage
 ├── narrative.md            # Chronological story of the session
 ├── messages.json           # Raw session messages (for deep reference)
 ├── decisions.json          # Key decisions extracted (AI-generated)
@@ -159,7 +184,10 @@ memory-vault import-pack bot.hermes-memory
 | `list` | List all packs in a directory |
 | `search <pattern>` | Regex search across packs |
 | `render <pack>` | Render pack as Markdown or HTML |
-| `index` | Enrich session titles & summaries via LLM |
+| `index [--workers N]` | Enrich session titles & summaries via LLM |
+| `providers` | List available LLM providers and their status |
+| `config set/get/list` | Manage persistent configuration |
+| `diff <pack1> <pack2>` | Compare two context packs side-by-side |
 
 ## Use cases
 
@@ -192,6 +220,7 @@ src/memory_vault/
 ├── core/
 │   ├── __init__.py
 │   ├── llm.py           # LLMProvider ABC + CloudflareAI + OpenAICompatibleProvider
+│   ├── config.py         # JSON config persistence (llm.provider, etc.)
 │   ├── manifest.py       # Manifest dataclass + serialization
 │   ├── pack.py           # ContextPack — in-memory representation + tar.gz I/O
 │   ├── builder.py        # ContextBuilder — reads Hermes sessions, builds packs

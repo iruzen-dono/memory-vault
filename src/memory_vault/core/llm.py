@@ -353,11 +353,12 @@ def get_provider(name: str | None = None) -> LLMProvider:
     """Get a provider by name, or auto-detect the best available.
 
     Auto-detection priority:
-      1. MEMORY_VAULT_LLM_PROVIDER env var
-      2. Cloudflare (if credentials present)
-      3. Anthropic (if API key present)
-      4. OpenAI-compatible (if API key present)
-      5. Cloudflare (no-cred fallback — .available() = False)
+      1. ``MEMORY_VAULT_LLM_PROVIDER`` env var
+      2. ``llm.provider`` in ``~/.config/memory-vault/config.yaml``
+      3. Cloudflare (if credentials present)
+      4. Anthropic (if API key present)
+      5. OpenAI-compatible (if API key present)
+      6. Cloudflare (no-cred fallback — .available() = False)
     """
     # Named lookup
     if name:
@@ -367,6 +368,17 @@ def get_provider(name: str | None = None) -> LLMProvider:
     env_name = os.environ.get("MEMORY_VAULT_LLM_PROVIDER", "").strip().lower()
     if env_name and env_name in _PROVIDERS:
         return _PROVIDERS[env_name]
+
+    # Config override (only if the configured provider is actually available)
+    try:
+        from memory_vault.core.config import get_llm_provider
+        cfg_name = get_llm_provider()
+        if cfg_name and cfg_name.lower() in _PROVIDERS:
+            candidate = _PROVIDERS[cfg_name.lower()]
+            if candidate.available():
+                return candidate
+    except Exception:
+        pass
 
     # Auto-detect by availability
     for p in ("cloudflare", "anthropic", "openai"):

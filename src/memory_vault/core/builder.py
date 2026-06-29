@@ -324,6 +324,9 @@ class ContextBuilder:
         # Build references
         references_md = self._build_references(messages)
 
+        # Read git commit SHA (best-effort)
+        source_commit = self._read_git_commit()
+
         # Build manifest
         manifest = Manifest(
             title=title or session_title,
@@ -333,6 +336,7 @@ class ContextBuilder:
             source_session_id=session_id,
             source_platform=session.get("source", ""),
             source_model=session.get("model", ""),
+            source_commit=source_commit,
             duration_minutes=duration_min,
             message_count=len(messages),
             narrative=NarrativeIndex(chapters=[]),  # reserved for AI-summarized chapters
@@ -524,3 +528,21 @@ class ContextBuilder:
             lines.append(f"{i}.  {url}")
         lines.append("")
         return "\n".join(lines)
+
+    # -- Git commit SHA detection --------------------------------------
+
+    @staticmethod
+    def _read_git_commit() -> str:
+        """Best-effort read of the current git commit SHA."""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+                cwd=Path.cwd(),
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()[:40]
+        except Exception:
+            pass
+        return ""

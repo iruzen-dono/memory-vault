@@ -53,6 +53,7 @@ class Manifest:
     source_session_id: str = ""
     source_platform: str = ""           # cli, telegram, discord, …
     source_model: str = ""              # model used during the session
+    source_commit: str = ""             # git commit SHA at pack creation time
     duration_minutes: int = 0
     message_count: int = 0
 

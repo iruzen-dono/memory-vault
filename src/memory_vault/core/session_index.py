@@ -30,6 +30,7 @@ import os
 import sqlite3
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
@@ -101,6 +102,7 @@ class SessionIndex:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._provider = provider or get_provider()
         self._init_db()
+        self._workers = 1  # default: sequential
         self.model = (
             os.environ.get("MEMORY_VAULT_INDEX_MODEL", "")
             or self._provider.default_model()
@@ -143,6 +145,10 @@ class SessionIndex:
     def set_model(self, model: str) -> None:
         """Override the model used for indexing."""
         self.model = model
+
+    def set_workers(self, n: int) -> None:
+        """Set number of parallel workers for indexing (default: 1 = sequential)."""
+        self._workers = max(1, n)
 
     # -- Read API ----------------------------------------------------
 
@@ -403,33 +409,68 @@ class SessionIndex:
         db = HermesSessionDB(builder.db_path)
         sessions = db.list_sessions(limit=9999)
         stats = {"total": len(sessions), "indexed": 0, "skipped": 0, "errors": 0}
+        _lock = __import__("threading").Lock()
 
         # Resolve model once for consistency
         active_model = model or self.model or self._provider.default_model()
 
-        for i, session in enumerate(sessions):
+        def _index_one(session: dict) -> dict:
+            """Index a single session (thread-safe). Returns status dict."""
             session_id = session.get("id", "")
             if not session_id:
-                continue
+                return {"status": "skip", "session_id": ""}
 
             # Skip if already indexed (unless force)
             if not force:
                 existing = self.get(session_id)
                 if existing and existing.get("msg_count", 0) >= session.get("message_count", 0):
-                    stats["skipped"] += 1
-                    if progress_callback:
-                        progress_callback(i + 1, len(sessions), session_id, "skipped")
-                    continue
-
-            if progress_callback:
-                progress_callback(i + 1, len(sessions), session_id, "indexing")
+                    return {"status": "skipped", "session_id": session_id}
 
             try:
                 messages = db.get_messages(session_id, active_only=True)
                 self.index_session(session, messages, force=force, model=active_model)
-                stats["indexed"] += 1
+                return {"status": "indexed", "session_id": session_id}
             except Exception:
-                stats["errors"] += 1
+                return {"status": "error", "session_id": session_id}
+
+        if self._workers > 1:
+            with ThreadPoolExecutor(max_workers=self._workers) as pool:
+                futs = [pool.submit(_index_one, s) for s in sessions]
+                for i, fut in enumerate(as_completed(futs)):
+                    result = fut.result()
+                    with _lock:
+                        if result["status"] == "indexed":
+                            stats["indexed"] += 1
+                        elif result["status"] == "skipped":
+                            stats["skipped"] += 1
+                        elif result["status"] == "error":
+                            stats["errors"] += 1
+                    if progress_callback:
+                        progress_callback(i + 1, len(sessions), result["session_id"], result["status"])
+        else:
+            # Sequential path (unchanged)
+            for i, session in enumerate(sessions):
+                session_id = session.get("id", "")
+                if not session_id:
+                    continue
+
+                if not force:
+                    existing = self.get(session_id)
+                    if existing and existing.get("msg_count", 0) >= session.get("message_count", 0):
+                        stats["skipped"] += 1
+                        if progress_callback:
+                            progress_callback(i + 1, len(sessions), session_id, "skipped")
+                        continue
+
+                if progress_callback:
+                    progress_callback(i + 1, len(sessions), session_id, "indexing")
+
+                try:
+                    messages = db.get_messages(session_id, active_only=True)
+                    self.index_session(session, messages, force=force, model=active_model)
+                    stats["indexed"] += 1
+                except Exception:
+                    stats["errors"] += 1
 
         return stats
 

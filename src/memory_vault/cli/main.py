@@ -28,12 +28,194 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+config_app = typer.Typer(
+    name="config",
+    help="Manage memory-vault configuration",
+    no_args_is_help=True,
+)
+app.add_typer(config_app)
+
 
 @app.callback()
 def version_callback(version: bool = typer.Option(False, "--version", "-V", help="Show version")):
     if version:
         typer.echo(f"memory-vault v{__version__}")
         raise typer.Exit()
+
+
+# ── providers: show available LLM providers ────────────────────────
+
+
+@app.command()
+def providers():
+    """List available LLM providers and their status."""
+    from memory_vault.core.llm import list_providers
+
+    statuses = list_providers()
+    if not statuses:
+        typer.echo("⚠️  No providers registered.")
+        raise typer.Exit()
+
+    typer.echo(f"  {'Provider':<16} {'Available':<12}")
+    typer.echo(f"  {'─' * 16} {'─' * 12}")
+    for name, available in statuses.items():
+        icon = "✅" if available else "❌"
+        typer.echo(f"  {name:<16} {icon:<12}")
+    typer.echo("")
+    typer.echo("Tip: set MEMORY_VAULT_LLM_PROVIDER=anthropic or run:")
+    typer.echo("  memory-vault config set llm.provider anthropic")
+
+
+# ── config: manage configuration ────────────────────────────────────
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(..., help="Config key (e.g. 'llm.provider')"),
+    value: str = typer.Argument(..., help="Config value (e.g. 'anthropic')"),
+):
+    """Set a configuration value (persisted to ~/.config/memory-vault/config.yaml)."""
+    from memory_vault.core.config import set_config_value
+
+    set_config_value(key, value)
+    typer.echo(f"✅ {key} = {value}")
+
+
+@config_app.command("get")
+def config_get(
+    key: str = typer.Argument(..., help="Config key (e.g. 'llm.provider')"),
+):
+    """Get a configuration value."""
+    from memory_vault.core.config import get_config_value
+
+    val = get_config_value(key)
+    if val is not None:
+        typer.echo(str(val))
+    else:
+        typer.echo("(not set)")
+        raise typer.Exit(1)
+
+
+@config_app.command("list")
+def config_list():
+    """Show all configuration values."""
+    from memory_vault.core.config import read_config
+
+    cfg = read_config()
+    if not cfg:
+        typer.echo("(empty — no config file yet)")
+        raise typer.Exit()
+
+    def _dump(d, prefix=""):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                typer.echo(f"  {prefix}{k}:")
+                _dump(v, prefix + "  ")
+            else:
+                typer.echo(f"  {prefix}{k}: {v}")
+    _dump(cfg)
+
+
+# ── diff: compare two context packs ──────────────────────────────────
+
+
+@app.command()
+def diff(
+    pack_a: str = typer.Argument(..., help="First .hermes-memory pack"),
+    pack_b: str = typer.Argument(..., help="Second .hermes-memory pack"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full diff"),
+):
+    """Compare two context packs and show differences."""
+    pa, pb = Path(pack_a), Path(pack_b)
+    if not pa.exists():
+        typer.echo(f"❌ Pack not found: {pa}", err=True)
+        raise typer.Exit(1)
+    if not pb.exists():
+        typer.echo(f"❌ Pack not found: {pb}", err=True)
+        raise typer.Exit(1)
+
+    pack1 = ContextPack.read(pa)
+    pack2 = ContextPack.read(pb)
+    s1 = pack1.summary()
+    s2 = pack2.summary()
+
+    typer.echo(f"  {'Field':<24} {pa.name:<36} {pb.name:<36}")
+    typer.echo(f"  {'─' * 24} {'─' * 36} {'─' * 36}")
+
+    diff_fields = [
+        ("Title", "title", str, str),
+        ("Description", "description", str, str),
+        ("Source session", "source_session_id", str, str),
+        ("Messages", "message_count", int, int),
+        ("Artifacts", "artifact_count", int, int),
+        ("Decisions", "decisions", int, int),
+        ("Format version", "format_version", str, str),
+    ]
+
+    changed = 0
+    for label, key, *_ in diff_fields:
+        v1 = s1.get(key, "")
+        v2 = s2.get(key, "")
+        same = v1 == v2
+        if not same:
+            changed += 1
+        marker = " " if same else "≠"
+        v1_s = str(v1)[:34]
+        v2_s = str(v2)[:34]
+        typer.echo(f"  {marker} {label:<22} {v1_s:<36} {v2_s:<36}")
+
+    # Narrative diff
+    n1 = bool(pack1.narrative_md)
+    n2 = bool(pack2.narrative_md)
+    n_same = n1 == n2
+    if not n_same:
+        changed += 1
+    marker = " " if n_same else "≠"
+    typer.echo(f"  {marker} {'Narrative':<22} {'yes' if n1 else 'no':<36} {'yes' if n2 else 'no':<36}")
+
+    # Handoff diff
+    h1 = bool(pack1.handoff_md)
+    h2 = bool(pack2.handoff_md)
+    h_same = h1 == h2
+    if not h_same:
+        changed += 1
+    marker = " " if h_same else "≠"
+    typer.echo(f"  {marker} {'Handoff':<22} {'yes' if h1 else 'no':<36} {'yes' if h2 else 'no':<36}")
+
+    # Tags diff
+    t1 = set(pack1.manifest.tags)
+    t2 = set(pack2.manifest.tags)
+    if t1 != t2:
+        changed += 1
+        added = t2 - t1
+        removed = t1 - t2
+        typer.echo(f"  {'≠ Tags added':<24} {'':36} {', '.join(added) if added else '—'}")
+        typer.echo(f"  {'≠ Tags removed':<24} {', '.join(removed) if removed else '—'}")
+        if t1:
+            typer.echo(f"  {'  common':<24} {', '.join(sorted(t1 & t2))}")
+
+    if verbose and pack1.narrative_md and pack2.narrative_md:
+        if pack1.narrative_md != pack2.narrative_md:
+            typer.echo("")
+            typer.echo("── Narrative diff ──")
+            try:
+                import difflib
+                for line in difflib.unified_diff(
+                    pack1.narrative_md.splitlines(),
+                    pack2.narrative_md.splitlines(),
+                    fromfile=pa.name,
+                    tofile=pb.name,
+                    lineterm="",
+                ):
+                    typer.echo(line)
+            except ImportError:
+                typer.echo("(difflib not available)")
+
+    typer.echo("")
+    if changed == 0:
+        typer.echo("✅ Packs are identical")
+    else:
+        typer.echo(f"{'≠'} {changed} field(s) differ")
 
 
 # ── list-sessions: browse Hermes sessions ─────────────────────────
@@ -411,12 +593,15 @@ def index(
     force: bool = typer.Option(False, "--force", "-f", help="Re-index already-indexed sessions"),
     new_only: bool = typer.Option(False, "--new", "-n", help="Only index new sessions (skip indexed)"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="LLM model override (default: MEMORY_VAULT_INDEX_MODEL env or llama-3.3-70b)"),
+    workers: int = typer.Option(1, "--workers", "-w", help="Number of parallel workers (1 = sequential)"),
     hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
 ):
     """Scan Hermes sessions and generate descriptive titles + summaries via LLM.
 
     Stores results in a local SQLite index so the TUI shows meaningful
     session names instead of auto-generated ones.
+
+    Use --workers 4 to index multiple sessions in parallel (faster on large vaults).
 
     To configure the LLM model:
       export MEMORY_VAULT_INDEX_MODEL="@cf/meta/llama-3.3-70b-instruct-fp8-fast"
@@ -430,15 +615,20 @@ def index(
     builder = ContextBuilder(hermes_home=hermes_home)
     idx = SessionIndex()
 
-    # Check Cloudflare availability
+    # Check LLM provider availability
     if not idx._provider.available():
-        typer.echo("⚠️  Cloudflare Workers AI credentials not found (CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN)")
-        typer.echo("   Will use template fallback — titles will be basic.")
+        typer.echo("⚠️  LLM provider credentials not found — will use template fallback titles.")
+        typer.echo("   Configure via: memory-vault config set llm.provider <name>")
+        typer.echo("   Or set MEMORY_VAULT_LLM_PROVIDER=<name> in your environment.")
         typer.echo("")
 
     if model:
         idx.set_model(model)
         typer.echo(f"   Using model: {model}")
+
+    if workers > 1:
+        idx.set_workers(workers)
+        typer.echo(f"   Parallel workers: {workers}")
 
     # Show current index status
     stats_before = idx.summary_stats()
@@ -448,9 +638,6 @@ def index(
     # Run indexing
     with typer.progressbar(length=1, label="Indexing sessions...") as progress:
         progress.update(1)
-
-        def on_progress(current, total, session_id, status):
-            pass  # typer's progressbar is simple; we just show total at end
 
         if new_only:
             result = idx.index_new(builder)
