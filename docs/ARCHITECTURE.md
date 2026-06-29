@@ -18,12 +18,15 @@ Memory Vault is a **Context Protocol** for AI agent sessions. It extracts the fu
 
 Pluggable LLM abstraction that decouples indexing and narration from a specific backend.
 
-- **`LLMProvider`** (ABC) — defines `available()`, `generate()`, `default_model()`
-- **`CloudflareAI`** — speaks Cloudflare Workers AI REST API (`accounts/{id}/ai/v1`)
-- **`OpenAICompatibleProvider`** — speaks any OpenAI-compatible API (OpenAI, Together, Groq, etc.)
+- **`LLMProvider`** (ABC) — defines `available()`, `chat()`, `default_model()`
+- **`CloudflareAI`** — Cloudflare Workers AI (`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`)
+- **`AnthropicProvider`** — Anthropic Messages API (`ANTHROPIC_API_KEY`, supports system prompt extraction, `ANTHROPIC_BASE_URL` for proxies)
+- **`OpenAICompatibleProvider`** — any OpenAI-compatible API (`OPENAI_API_KEY`, `OPENAI_BASE_URL`)
 
-Providers resolve credentials lazily in `available()` so importing the module never crashes on missing env vars. `SessionIndex` and `SessionNarrator` both take an `LLMProvider` instance via their constructor and fall back to template-based output when no provider is configured.
+**Auto-detection** in `get_provider()` scans in order: `MEMORY_VAULT_LLM_PROVIDER` env var → Cloudflare → Anthropic → OpenAI-compatible → fallback (Cloudflare without creds).
 
+Each backend lazy-resolves credentials in `available()` and returns `None` from
+`chat()` on any failure, never raising — callers always have a `str | None`.
 ### Manifest (`core/manifest.py`)
 
 Every pack's identity. Contains:

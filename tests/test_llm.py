@@ -9,6 +9,7 @@ import pytest
 
 from memory_vault.core.llm import (
     FAST_MODEL,
+    AnthropicProvider,
     CloudflareAI,
     LLMProvider,
     OpenAICompatibleProvider,
@@ -163,6 +164,136 @@ class TestCloudflareAI:
             assert result is None
 
 
+# ── Anthropic provider ──────────────────────────────────────────────
+
+
+class TestAnthropicProvider:
+    def test_available_with_key(self):
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            assert provider.available() is True
+
+    def test_unavailable_without_key(self):
+        with _WithEnv(ANTHROPIC_API_KEY=""):
+            provider = AnthropicProvider()
+            assert provider.available() is False
+
+    def test_unavailable_absent_key(self):
+        with _WithEnv(ANTHROPIC_API_KEY=None):
+            provider = AnthropicProvider()
+            assert provider.available() is False
+
+    def test_default_model(self):
+        """Default is claude-sonnet-4 when ANTHROPIC_MODEL is not set."""
+        with _WithEnv(ANTHROPIC_MODEL=None):
+            provider = AnthropicProvider()
+            assert provider.default_model() == "claude-sonnet-4"
+
+    def test_default_model_from_env(self):
+        with _WithEnv(ANTHROPIC_MODEL="claude-haiku-3.5"):
+            provider = AnthropicProvider()
+            assert provider.default_model() == "claude-haiku-3.5"
+
+    def test_name(self):
+        provider = AnthropicProvider()
+        assert provider.name == "anthropic"
+
+    def test_custom_base_url(self):
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key", ANTHROPIC_BASE_URL="https://myproxy.anthropic.com/v1"):
+            provider = AnthropicProvider()
+            assert provider.available() is True
+
+    def test_chat_calls_api(self):
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            with patch("memory_vault.core.llm.urlopen") as mock_urlopen:
+                mock_response = _mock_urlopen({
+                    "content": [{"type": "text", "text": "Hello from Claude!"}]
+                })
+                mock_urlopen.return_value = mock_response
+
+                result = provider.chat(
+                    messages=[{"role": "user", "content": "hi"}],
+                    model="claude-sonnet-4",
+                )
+                assert result == "Hello from Claude!"
+
+    def test_chat_system_message_conversion(self):
+        """System messages are extracted to the separate Anthropic 'system' field."""
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            with patch("memory_vault.core.llm.urlopen") as mock_urlopen:
+                mock_response = _mock_urlopen({
+                    "content": [{"type": "text", "text": "Roger!"}]
+                })
+                mock_urlopen.return_value = mock_response
+
+                result = provider.chat(
+                    messages=[
+                        {"role": "system", "content": "You are helpful."},
+                        {"role": "user", "content": "hi"},
+                    ],
+                    model="claude-sonnet-4",
+                )
+                assert result == "Roger!"
+                # Verify system field was sent separately
+                call_body = json.loads(mock_urlopen.call_args[0][0].data)
+                assert call_body.get("system") == "You are helpful."
+                # Verify system role is not in messages
+                roles = [m["role"] for m in call_body["messages"]]
+                assert "system" not in roles
+                assert roles == ["user"]
+
+    def test_chat_assistant_first_message(self):
+        """If conversation starts with assistant, a user placeholder is prepended."""
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            with patch("memory_vault.core.llm.urlopen") as mock_urlopen:
+                mock_response = _mock_urlopen({
+                    "content": [{"type": "text", "text": "continuing..."}]
+                })
+                mock_urlopen.return_value = mock_response
+                provider.chat(
+                    messages=[{"role": "assistant", "content": "Hello!"}],
+                    model="claude-sonnet-4",
+                )
+                call_body = json.loads(mock_urlopen.call_args[0][0].data)
+                assert call_body["messages"][0]["role"] == "user"
+
+    def test_chat_empty_content(self):
+        """API returns content: [] → returns None."""
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            with patch("memory_vault.core.llm.urlopen") as mock_urlopen:
+                mock_response = _mock_urlopen({"content": []})
+                mock_urlopen.return_value = mock_response
+                result = provider.chat(
+                    messages=[{"role": "user", "content": "hi"}],
+                    model="claude-sonnet-4",
+                )
+                assert result is None
+
+    def test_chat_returns_none_on_error(self):
+        with _WithEnv(ANTHROPIC_API_KEY="sk-ant-test-key"):
+            provider = AnthropicProvider()
+            with patch("memory_vault.core.llm.urlopen") as mock_urlopen:
+                mock_urlopen.side_effect = URLError("connection error")
+                result = provider.chat(
+                    messages=[{"role": "user", "content": "hi"}],
+                    model="claude-sonnet-4",
+                )
+                assert result is None
+
+    def test_chat_no_key_graceful(self):
+        with _WithEnv(ANTHROPIC_API_KEY=""):
+            provider = AnthropicProvider()
+            result = provider.chat(
+                messages=[{"role": "user", "content": "hi"}],
+                model="claude-sonnet-4",
+            )
+            assert result is None
+
+
 # ── OpenAI-compatible provider ──────────────────────────────────────
 
 
@@ -259,20 +390,55 @@ class TestGetProvider:
         with _WithEnv(
             CLOUDFLARE_API_TOKEN="test-key",
             CLOUDFLARE_ACCOUNT_ID="test-account",
+            ANTHROPIC_API_KEY="",
             OPENAI_API_KEY="",
         ):
             provider = get_provider()
             assert provider.name == "cloudflare"
 
-    def test_default_openai_without_cloudflare(self):
+    def test_default_anthropic_without_cloudflare(self):
+        """When only Anthropic creds are set, get_provider() returns anthropic."""
+        with _WithEnv(
+            CLOUDFLARE_API_TOKEN="",
+            CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="sk-ant-test-key",
+            OPENAI_API_KEY="",
+        ):
+            provider = get_provider()
+            assert provider.name == "anthropic"
+
+    def test_default_openai_without_others(self):
         """When only OpenAI creds are set, get_provider() returns openai."""
         with _WithEnv(
             CLOUDFLARE_API_TOKEN="",
             CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="",
             OPENAI_API_KEY="sk-test-key",
         ):
             provider = get_provider()
             assert provider.name == "openai"
+
+    def test_anthropic_preferred_over_openai(self):
+        """Anthropic wins over OpenAI when both are available (Cloudflare not)."""
+        with _WithEnv(
+            CLOUDFLARE_API_TOKEN="",
+            CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="sk-ant-test-key",
+            OPENAI_API_KEY="sk-test-key",
+        ):
+            provider = get_provider()
+            assert provider.name == "anthropic"
+
+    def test_cloudflare_still_wins(self):
+        """Cloudflare still wins over Anthropic when both are available."""
+        with _WithEnv(
+            CLOUDFLARE_API_TOKEN="test-key",
+            CLOUDFLARE_ACCOUNT_ID="test-account",
+            ANTHROPIC_API_KEY="sk-ant-test-key",
+            OPENAI_API_KEY="sk-test-key",
+        ):
+            provider = get_provider()
+            assert provider.name == "cloudflare"
 
     def test_env_var_overrides(self):
         """MEMORY_VAULT_LLM_PROVIDER forces a specific provider."""
@@ -281,9 +447,19 @@ class TestGetProvider:
             OPENAI_API_KEY="sk-test-key",
             CLOUDFLARE_API_TOKEN="",
             CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="",
         ):
             provider = get_provider()
             assert provider.name == "openai"
+        with _WithEnv(
+            MEMORY_VAULT_LLM_PROVIDER="anthropic",
+            ANTHROPIC_API_KEY="sk-ant-test-key",
+            CLOUDFLARE_API_TOKEN="",
+            CLOUDFLARE_ACCOUNT_ID="",
+            OPENAI_API_KEY="",
+        ):
+            provider = get_provider()
+            assert provider.name == "anthropic"
 
     def test_unknown_provider_fallback(self):
         """Unknown provider name falls back to first available."""
@@ -291,6 +467,7 @@ class TestGetProvider:
             MEMORY_VAULT_LLM_PROVIDER="nonexistent",
             CLOUDFLARE_API_TOKEN="",
             CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="",
             OPENAI_API_KEY="sk-test-key",
         ):
             provider = get_provider()
@@ -302,6 +479,7 @@ class TestGetProvider:
         with _WithEnv(
             CLOUDFLARE_API_TOKEN="",
             CLOUDFLARE_ACCOUNT_ID="",
+            ANTHROPIC_API_KEY="",
             OPENAI_API_KEY="",
         ):
             provider = get_provider()
@@ -310,22 +488,13 @@ class TestGetProvider:
             assert provider.available() is False
 
     def test_env_var_takes_precedence(self):
-        """MEMORY_VAULT_LLM_PROVIDER=openai works even with Cloudflare also configured."""
+        """MEMORY_VAULT_LLM_PROVIDER works even when others are configured."""
         with _WithEnv(
-            MEMORY_VAULT_LLM_PROVIDER="openai",
-            OPENAI_API_KEY="sk-test-key",
-            CLOUDFLARE_API_TOKEN="test-key",
-            CLOUDFLARE_ACCOUNT_ID="test-account",
-        ):
-            provider = get_provider()
-            assert provider.name == "openai"
-
-    def test_clouflare_preferred_over_openai(self):
-        """When both are available, Cloudflare wins (no env override)."""
-        with _WithEnv(
+            MEMORY_VAULT_LLM_PROVIDER="anthropic",
+            ANTHROPIC_API_KEY="sk-ant-test-key",
             CLOUDFLARE_API_TOKEN="test-key",
             CLOUDFLARE_ACCOUNT_ID="test-account",
             OPENAI_API_KEY="sk-test-key",
         ):
             provider = get_provider()
-            assert provider.name == "cloudflare"
+            assert provider.name == "anthropic"
