@@ -5,6 +5,9 @@
 Memory Vault turns any Hermes session into a portable `.hermes-memory` **context pack** — the conversation, the tool traces, the artifacts created, and a handoff brief that lets another agent pick up exactly where you left off.
 
 ```bash
+# Launch the interactive TUI browser
+memory-vault browse
+
 # List sessions
 memory-vault list-sessions
 
@@ -17,6 +20,45 @@ memory-vault info bot.hermes-memory
 # Import (show handoff + artifacts)
 memory-vault import-pack bot.hermes-memory
 ```
+
+## Features
+
+### 🖥️ Interactive TUI (`memory-vault browse`)
+
+Browse sessions with enriched titles (LLM-generated), search, export, and re-index — all from the terminal.
+
+```
+┌────────── Session Browser ───────────┐
+│ Config Fix                           │
+│ 20260629_06423 · deepseek-v4-flash   │
+│ The AI agent fixed config issues…    │
+│                                      │
+│ Memory Vault Dev                     │
+│ 20260628 · deepseek-v4-flash         │
+│ Developed and tested Memory Vault…   │
+└──────────────────────────────────────┘
+```
+
+Press `i` to re-index a session, `e` to export, `Ctrl+P` to search.
+
+### 🧠 Smart Session Indexing (`memory-vault index`)
+
+Generate descriptive titles and summaries for all your Hermes sessions using Cloudflare Workers AI. Configurable model via `--model` or `MEMORY_VAULT_INDEX_MODEL` env var.
+
+```bash
+# Index all sessions
+memory-vault index
+
+# Re-index with a specific model
+MEMORY_VAULT_INDEX_MODEL="@cf/meta/llama-3.3-70b-instruct-fp8-fast" memory-vault index --force
+
+# Only new sessions
+memory-vault index --new
+```
+
+### 📦 Context Packs
+
+Shareable, self-contained archives of any Hermes session.
 
 ## Why context packs?
 
@@ -48,17 +90,30 @@ bot.hermes-memory/
 
 ## Quick start
 
-### 1. Browse sessions
+### 1. Install
 
 ```bash
-memory-vault list-sessions
-# 📋 Recent sessions
-#
-#   [20260620_143021_a1b2…] Built Hyperliquid Trading Bot
-#            cli · claude-sonnet-4 · 142 messages
+pip install "memory-vault[tui]"   # with TUI
+pip install "memory-vault"        # CLI only (lighter)
 ```
 
-### 2. Export a session
+### 2. Browse sessions
+
+```bash
+memory-vault browse
+# or just list:
+memory-vault list-sessions
+```
+
+### 3. Index sessions (optional, for meaningful titles)
+
+Requires Cloudflare Workers AI credentials (`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` in env).
+
+```bash
+memory-vault index
+```
+
+### 4. Export a session
 
 ```bash
 memory-vault export 20260620_143021_a1b2c3 \
@@ -68,7 +123,7 @@ memory-vault export 20260620_143021_a1b2c3 \
   --author iruzen
 ```
 
-### 3. Share or archive
+### 5. Share or archive
 
 Send the `.hermes-memory` file anywhere. The receiving agent loads it with:
 
@@ -76,17 +131,19 @@ Send the `.hermes-memory` file anywhere. The receiving agent loads it with:
 memory-vault import-pack bot.hermes-memory
 ```
 
-This shows the handoff brief, artifact list, and tool usage statistics — everything needed to continue the work.
-
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| `browse` | Launch interactive TUI (sessions or packs) |
 | `list-sessions` | Browse available Hermes sessions |
 | `export <id>` | Pack a session into .hermes-memory |
 | `info <pack>` | Inspect a pack (metadata, artifacts, tools) |
 | `import-pack <pack>` | Show handoff brief, artifacts, and tool traces |
 | `list` | List all packs in a directory |
+| `search <pattern>` | Regex search across packs |
+| `render <pack>` | Render pack as Markdown or HTML |
+| `index` | Enrich session titles & summaries via LLM |
 
 ## Use cases
 
@@ -114,12 +171,17 @@ Memory Vault reads directly from the Hermes sessions database (`state.db`). It:
 src/memory_vault/
 ├── __init__.py           # Version + public exports
 ├── __main__.py           # CLI entry point
-├── cli/main.py           # Typer commands (export, info, import, list)
+├── cli/
+│   └── main.py           # Typer commands (export, info, import, list, search, render, index, browse)
 ├── core/
 │   ├── __init__.py
 │   ├── manifest.py       # Manifest dataclass + serialization
 │   ├── pack.py           # ContextPack — in-memory representation + tar.gz I/O
-│   └── builder.py        # ContextBuilder — reads Hermes sessions, builds packs
+│   ├── builder.py        # ContextBuilder — reads Hermes sessions, builds packs
+│   ├── narrator.py       # CloudflareAI — wrapper for Cloudflare Workers AI LLM
+│   ├── renderer.py       # Export packs as Markdown or HTML
+│   ├── session_index.py  # SessionIndex — SQLite cache for LLM-enriched titles
+│   └── tui.py            # MemoryVaultTUI — Textual-based interactive browser
 ```
 
 ## License

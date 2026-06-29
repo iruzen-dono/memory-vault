@@ -19,6 +19,7 @@ from typing import Optional
 
 from .manifest import Manifest, ToolUsage, ArtifactIndex, NarrativeIndex
 from .pack import ContextPack
+from .narrator import SessionNarrator
 
 
 # Tools that create or modify files — we track these as artifacts
@@ -193,6 +194,8 @@ class ContextBuilder:
         author: str = "",
         include_artifacts: bool = True,
         project_root: str | Path | None = None,
+        narrate: bool = False,
+        deep: bool = False,
     ) -> ContextPack:
         """Build a ContextPack from a Hermes session.
 
@@ -298,11 +301,17 @@ class ContextBuilder:
         if started and ended:
             duration_min = int((ended - started) / 60) if ended > started else 0
 
-        # Build narrative
-        narrative_md = self._build_narrative(session, messages)
-
-        # Build handoff
-        handoff_md = self._build_handoff(session, messages)
+        # Build narrative (template or LLM-compressed)
+        if narrate:
+            narrator = SessionNarrator()
+            nar_result = narrator.summarize(session, messages, tool_traces, deep=deep)
+            narrative_md = nar_result.summary_md
+            handoff_md = nar_result.handoff_md
+            decisions = nar_result.decisions
+        else:
+            narrative_md = self._build_narrative(session, messages)
+            handoff_md = self._build_handoff(session, messages)
+            decisions = []
 
         # Build references
         references_md = self._build_references(messages)
@@ -343,7 +352,7 @@ class ContextBuilder:
             manifest=manifest,
             narrative_md=narrative_md,
             messages=messages,
-            decisions=[],  # reserved for AI-extracted decisions
+            decisions=decisions,  # AI-extracted decisions (or empty)
             artifacts=artifact_paths if include_artifacts else {},
             tool_traces=tool_traces,
             handoff_md=handoff_md,

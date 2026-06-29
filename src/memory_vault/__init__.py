@@ -8,6 +8,7 @@ decisions, and a handoff brief for another agent.
 from memory_vault.core.pack import ContextPack
 from memory_vault.core.manifest import Manifest, ToolUsage, ArtifactIndex, CURRENT_FORMAT_VERSION, PACK_TYPE_CONTEXT
 from memory_vault.core.builder import ContextBuilder
+from memory_vault.core.session_index import SessionIndex
 
 __version__ = "0.1.0"
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "Manifest",
     "ToolUsage",
     "ArtifactIndex",
+    "SessionIndex",
     "CURRENT_FORMAT_VERSION",
     "PACK_TYPE_CONTEXT",
 ]

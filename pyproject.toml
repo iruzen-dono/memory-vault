@@ -34,7 +34,10 @@ dev = [
 vault = [
     "markdown>=3.5,<4.0",
 ]
-all = ["memory-vault[vault]"]
+tui = [
+    "textual>=2.0,<3.0",
+]
+all = ["memory-vault[vault,tui]"]
 
 [project.urls]
 homepage = "https://github.com/iruzen-dono/memory-vault"
