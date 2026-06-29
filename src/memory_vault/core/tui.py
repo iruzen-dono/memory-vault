@@ -20,21 +20,18 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import (
-    Button,
     Footer,
     Header,
     Input,
     Label,
     ListItem,
     ListView,
-    RichLog,
     Static,
 )
 
 from memory_vault.core.builder import ContextBuilder
-from memory_vault.core.pack import ContextPack, HERMES_MEMORY_EXTENSION
+from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
 from memory_vault.core.session_index import SessionIndex
-
 
 # ── Session list widget ─────────────────────────────────────────────
 

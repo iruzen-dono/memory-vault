@@ -1,33 +1,27 @@
 """Narrator — AI session compression for context packs.
 
-Uses Cloudflare Workers AI (or a local fallback) to generate a concise
-narrative, extract key decisions, and produce a handoff brief from a
-Hermes session's raw messages.
+Uses a pluggable LLM provider (Cloudflare Workers AI, OpenAI-compatible,
+or template fallback) to generate a concise narrative, extract key
+decisions, and produce a handoff brief from a Hermes session.
 
-Two backends:
-  1. Cloudflare Workers AI (primary) — GLM-5.2 for deep reasoning,
-     llama-3.3-70b for fast summaries. Requires CLOUDFLARE_ACCOUNT_ID
-     and CLOUDFLARE_API_TOKEN in the environment.
-  2. Template fallback — no-LLM path that produces a clean summary
-     from the raw data (always available).
+Provider selection (see core/llm.py):
+  - MEMORY_VAULT_LLM_PROVIDER env var
+  - Auto-detect from credentials
+  - Template fallback if no provider available
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
-from dataclasses import dataclass, field, asdict
-from typing import Optional
-from urllib.request import Request, urlopen
-from urllib.error import URLError
+from dataclasses import dataclass, field
 
-
-# ── Models ─────────────────────────────────────────────────────────
-
-_FAST_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-_DEEP_MODEL = "@cf/zai-org/glm-5.2"  # reasoning model, slower but richer
-
+from memory_vault.core.llm import (
+    DEEP_MODEL,
+    FAST_MODEL,
+    LLMProvider,
+    get_provider,
+)
 
 # ── Data classes ────────────────────────────────────────────────────
 
@@ -52,94 +46,23 @@ class NarrativeResult:
     """True if LLM was actually called (not template fallback)."""
 
 
-# ── Cloudflare Workers AI client ────────────────────────────────────
-
-
-class CloudflareAI:
-    """Minimal client for Cloudflare Workers AI REST API."""
-
-    def __init__(self):
-        self.account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-        self.api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
-        self._available = bool(self.account_id and self.api_token)
-
-    def available(self) -> bool:
-        """Check if Cloudflare AI credentials are configured."""
-        return self._available
-
-    def _call(
-        self,
-        model: str,
-        messages: list[dict],
-        max_tokens: int = 4096,
-        temperature: float = 0.3,
-        timeout: int = 120,
-    ) -> dict | None:
-        """Call Cloudflare Workers AI and return the response dict."""
-        if not self._available:
-            return None
-
-        url = (
-            f"https://api.cloudflare.com/client/v4/accounts/"
-            f"{self.account_id}/ai/run/{model}"
-        )
-        payload = json.dumps({
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }).encode()
-
-        req = Request(url, data=payload, method="POST")
-        req.add_header("Authorization", f"Bearer {self.api_token}")
-        req.add_header("Content-Type", "application/json")
-
-        try:
-            resp = urlopen(req, timeout=timeout)
-            body = json.loads(resp.read().decode())
-            if body.get("success"):
-                return body["result"]
-            return None
-        except (URLError, json.JSONDecodeError, OSError):
-            return None
-
-    def summarize(self, prompt: str, deep: bool = False) -> str | None:
-        """Send a summarization prompt and return the text response.
-
-        Args:
-            prompt: The full prompt (system + user already combined).
-            deep: If True, use GLM-5.2 (slower but richer reasoning).
-
-        Returns:
-            The model's text response, or None on failure.
-        """
-        model = _DEEP_MODEL if deep else _FAST_MODEL
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a precise session summarizer. "
-                           "Produce clear, structured markdown. Be concise.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-        result = self._call(model, messages, max_tokens=8192 if deep else 4096)
-        if result:
-            return result.get("response", "")
-        return None
-
-
 # ── The narrator ────────────────────────────────────────────────────
 
 
 class SessionNarrator:
     """Compresses a session into narrative + decisions + handoff.
 
-    Usage:
+    Usage::
+
         narrator = SessionNarrator()
         result = narrator.summarize(session, messages, tool_traces)
+
+    Args:
+        provider: An LLMProvider instance. Defaults to auto-detect.
     """
 
-    def __init__(self):
-        self.ai = CloudflareAI()
+    def __init__(self, provider: LLMProvider | None = None):
+        self.provider = provider or get_provider()
 
     def summarize(
         self,
@@ -150,15 +73,31 @@ class SessionNarrator:
     ) -> NarrativeResult:
         """Generate a compressed narrative from session data.
 
-        Tries the LLM path first (Cloudflare Workers AI). Falls back
-        to template-based summarization if the model is unavailable.
+        Tries the LLM path first (via the configured provider).
+        Falls back to template-based summarization.
         """
         # Try LLM path
-        if self.ai.available():
+        if self.provider.available():
             prompt = self._build_prompt(session, messages, tool_traces)
-            response = self.ai.summarize(prompt, deep=deep)
+            model = DEEP_MODEL if deep else FAST_MODEL
+            # Cloudflare uses CF model names; OpenAI uses its own
+            if self.provider.name != "cloudflare":
+                model = self.provider.default_model() if deep else self.provider.default_model()
+            response = self.provider.chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise session summarizer. "
+                                   "Produce clear, structured markdown. Be concise.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=model,
+                max_tokens=8192 if deep else 4096,
+                temperature=0.3,
+            )
             if response:
-                return self._parse_llm_response(response, deep=deep)
+                return self._parse_llm_response(response, model=model)
 
         # Fallback: template
         return self._template_fallback(session, messages, tool_traces)
@@ -255,15 +194,12 @@ A concise paragraph (2-5 sentences) telling another agent:
 - Any gotchas or important context to know
 
 Write in natural language, as if briefing a teammate who is
-taking over this task right now.
-"""
+taking over this task right now."""
 
     # -- Response parsing -----------------------------------------------
 
-    def _parse_llm_response(self, response: str, deep: bool = False) -> NarrativeResult:
+    def _parse_llm_response(self, response: str, model: str = "unknown") -> NarrativeResult:
         """Parse the LLM's response into structured sections."""
-        model = _DEEP_MODEL if deep else _FAST_MODEL
-
         # Extract sections by markdown headings
         sections = {}
         current_section = "preamble"

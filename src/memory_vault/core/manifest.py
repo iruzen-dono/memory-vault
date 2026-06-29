@@ -7,10 +7,8 @@ its origin session, and what's inside.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
-
 
 CURRENT_FORMAT_VERSION = "1.0.0"
 PACK_TYPE_CONTEXT = "context-pack"

@@ -2,18 +2,19 @@
 
 import json
 import tarfile
-import os
-from pathlib import Path
 
 import pytest
 
 from memory_vault import __version__
 from memory_vault.core.manifest import (
-    Manifest, ToolUsage, ArtifactIndex, NarrativeIndex,
-    PACK_TYPE_CONTEXT, CURRENT_FORMAT_VERSION,
+    CURRENT_FORMAT_VERSION,
+    PACK_TYPE_CONTEXT,
+    ArtifactIndex,
+    Manifest,
+    NarrativeIndex,
+    ToolUsage,
 )
-from memory_vault.core.pack import ContextPack, HERMES_MEMORY_EXTENSION
-
+from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
 
 # ── Manifest tests ────────────────────────────────────────────────
 

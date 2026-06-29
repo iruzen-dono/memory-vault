@@ -11,9 +11,7 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import re
-import sys
 import tarfile
 from pathlib import Path
 from typing import Optional
@@ -22,7 +20,7 @@ import typer
 
 from memory_vault import __version__
 from memory_vault.core.builder import ContextBuilder
-from memory_vault.core.pack import ContextPack, HERMES_MEMORY_EXTENSION
+from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
 
 app = typer.Typer(
     name="memory-vault",
@@ -426,14 +424,14 @@ def index(
     Requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in environment.
     Falls back to template-based labels when Cloudflare is unavailable.
     """
-    from memory_vault.core.session_index import SessionIndex
     from memory_vault.core.builder import ContextBuilder
+    from memory_vault.core.session_index import SessionIndex
 
     builder = ContextBuilder(hermes_home=hermes_home)
     idx = SessionIndex()
 
     # Check Cloudflare availability
-    if not idx._ai.available():
+    if not idx._provider.available():
         typer.echo("⚠️  Cloudflare Workers AI credentials not found (CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN)")
         typer.echo("   Will use template fallback — titles will be basic.")
         typer.echo("")
@@ -485,7 +483,7 @@ def browse(
     try:
         from memory_vault.core.tui import browse as tui_browse
         tui_browse(mode=mode, directory=path)
-    except ImportError as e:
+    except ImportError:
         typer.echo("❌ TUI extra not installed. Run: pip install 'memory-vault[tui]'", err=True)
         raise typer.Exit(1)
 

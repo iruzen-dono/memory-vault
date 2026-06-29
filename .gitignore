@@ -23,4 +23,7 @@ Thumbs.db
 
 # Project
 *.hermes-memory
+
+# OS-specific temp artifacts
 %TEMP%/
+tmp/

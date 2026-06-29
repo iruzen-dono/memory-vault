@@ -17,7 +17,6 @@ from datetime import datetime
 
 from .pack import ContextPack
 
-
 # ── Markdown ────────────────────────────────────────────────────────
 
 
@@ -35,8 +34,8 @@ def render_markdown(pack: ContextPack) -> str:
 
     lines.append("## Metadata")
     lines.append("")
-    lines.append(f"| Field | Value |")
-    lines.append(f"|-------|-------|")
+    lines.append("| Field | Value |")
+    lines.append("|-------|-------|")
     lines.append(f"| Pack type | {s['pack_type']} |")
     lines.append(f"| Format version | {s['format_version']} |")
     lines.append(f"| Author | {s['author'] or '—'} |")
@@ -204,7 +203,7 @@ def _md_to_html(md_text: str) -> str:
                 in_code_block = False
             else:
                 lang = line[3:].strip()
-                html_lines.append(f"<pre><code>" if not lang else f'<pre><code class="language-{html_mod.escape(lang)}">')
+                html_lines.append("<pre><code>" if not lang else f'<pre><code class="language-{html_mod.escape(lang)}">')
                 in_code_block = True
             continue
 

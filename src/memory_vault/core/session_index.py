@@ -1,13 +1,18 @@
 """Session Index — local cache of LLM-enriched session titles and summaries.
 
-Scans Hermes sessions, analyzes content via Cloudflare Workers AI,
+Scans Hermes sessions, analyzes content via a pluggable LLM provider,
 and stores custom titles + summaries so the TUI shows accurate,
 descriptive names instead of auto-generated ones.
 
-Model selection (priority order):
+Provider selection (see core/llm.py):
+  - MEMORY_VAULT_LLM_PROVIDER env var
+  - Auto-detect from credentials
+  - Template fallback if no provider available
+
+Model selection for indexing (priority order):
   1. `model` parameter passed explicitly
   2. MEMORY_VAULT_INDEX_MODEL env var
-  3. narrator's fast model (llama-3.3-70b by default)
+  3. provider.default_model()
 
 Schema:
     session_id  TEXT PRIMARY KEY
@@ -26,15 +31,19 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
-from memory_vault.core.narrator import CloudflareAI, _FAST_MODEL, _DEEP_MODEL
-
+from memory_vault.core.llm import (
+    LLMProvider,
+    get_provider,
+)
 
 # ── Default model selection ────────────────────────────────────────
-
-_DEFAULT_INDEX_MODEL = os.environ.get("MEMORY_VAULT_INDEX_MODEL", _FAST_MODEL)
-"""Model used for title+summary generation. Override via env var."""
+#
+# Model is resolved at SessionIndex init time via:
+#   1. MEMORY_VAULT_INDEX_MODEL env var
+#   2. provider.default_model()
+#
 
 
 # ── LLM prompt for title+summary generation ────────────────────────
@@ -71,19 +80,31 @@ Remember: TITLE: on first line, SUMMARY: on second line. Max 60 chars for title.
 class SessionIndex:
     """Local SQLite cache of enriched session titles and summaries.
 
-    Usage:
+    Usage::
+
         idx = SessionIndex()
         idx.index_all(builder)        # one-shot: scan everything
         idx.index_new(builder)        # incremental: only unindexed
         entry = idx.get(session_id)   # read cached entry
+
+    Args:
+        db_path: Path to the SQLite DB. Defaults to next to Hermes state.
+        provider: An LLMProvider instance. Defaults to auto-detect.
     """
 
-    def __init__(self, db_path: str | Path | None = None):
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        provider: LLMProvider | None = None,
+    ):
         self.db_path = Path(db_path) if db_path else self._default_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ai = CloudflareAI()
+        self._provider = provider or get_provider()
         self._init_db()
-        self.model = os.environ.get("MEMORY_VAULT_INDEX_MODEL", _FAST_MODEL)
+        self.model = (
+            os.environ.get("MEMORY_VAULT_INDEX_MODEL", "")
+            or self._provider.default_model()
+        )
 
     @staticmethod
     def _detect_hermes_home() -> Path:
@@ -245,26 +266,6 @@ class SessionIndex:
 
         return title, summary
 
-    def _llm_title_summary(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int = 512,
-    ) -> str | None:
-        """Call Cloudflare AI with a custom model, bypassing summarize()."""
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a precise session labeler. "
-                           "Respond with exactly TITLE: and SUMMARY: lines.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-        result = self._ai._call(model, messages, max_tokens=max_tokens, temperature=0.3)
-        if result:
-            return result.get("response", "")
-        return None
-
     def index_session(
         self,
         session: dict,
@@ -279,7 +280,7 @@ class SessionIndex:
             messages: Full message list for the session.
             force: Re-index even if already indexed.
             model: Model to use for generation. Falls back to
-                   MEMORY_VAULT_INDEX_MODEL env var, then default fast model.
+                   MEMORY_VAULT_INDEX_MODEL env var, then provider default.
 
         Returns:
             The indexed entry dict, or None if skipped.
@@ -296,8 +297,8 @@ class SessionIndex:
             if existing and existing.get("msg_count", 0) >= msg_count:
                 return existing
 
-        # Resolve model: explicit > env var > default
-        active_model = model or self.model or _FAST_MODEL
+        # Resolve model: explicit > self.model > provider default
+        active_model = model or self.model or self._provider.default_model()
 
         # Build transcript sample
         transcript = self._build_transcript_sample(messages)
@@ -326,7 +327,7 @@ class SessionIndex:
         summary = ""
         model_used = "template"
 
-        if self._ai.available():
+        if self._provider.available():
             prompt = TITLE_PROMPT.format(
                 model=session.get("model", "?"),
                 platform=session.get("source", "?"),
@@ -334,7 +335,19 @@ class SessionIndex:
                 tools=tool_str,
                 transcript=transcript,
             )
-            response = self._llm_title_summary(prompt, model=active_model)
+            response = self._provider.chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise session labeler. "
+                                   "Respond with exactly TITLE: and SUMMARY: lines.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=active_model,
+                max_tokens=512,
+                temperature=0.3,
+            )
             if response:
                 title, summary = self._extract_title_summary(response)
                 model_used = active_model
@@ -380,10 +393,6 @@ class SessionIndex:
             force: Re-index even if already indexed.
             model: Model override for LLM generation.
             progress_callback: fn(current, total, session_id, status)
-                               where status is "indexing", "skipped", "done", "error".
-
-        Returns:
-            Stats dict: {"total": N, "indexed": N, "skipped": N, "errors": N}
         """
         from memory_vault.core.builder import HermesSessionDB
 
@@ -396,7 +405,7 @@ class SessionIndex:
         stats = {"total": len(sessions), "indexed": 0, "skipped": 0, "errors": 0}
 
         # Resolve model once for consistency
-        active_model = model or self.model or _FAST_MODEL
+        active_model = model or self.model or self._provider.default_model()
 
         for i, session in enumerate(sessions):
             session_id = session.get("id", "")
@@ -421,12 +430,6 @@ class SessionIndex:
                 stats["indexed"] += 1
             except Exception:
                 stats["errors"] += 1
-
-            if progress_callback:
-                progress_callback(
-                    i + 1, len(sessions), session_id,
-                    "error" if stats.get("last_error") else "done",
-                )
 
         return stats
 

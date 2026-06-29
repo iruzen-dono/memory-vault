@@ -21,15 +21,13 @@ Layout (v1 — context-pack):
 from __future__ import annotations
 
 import json
+import shutil
 import tarfile
 import tempfile
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
-from .manifest import Manifest, ToolUsage, ArtifactIndex, NarrativeIndex
-
+from .manifest import Manifest
 
 HERMES_MEMORY_EXTENSION = ".hermes-memory"
 

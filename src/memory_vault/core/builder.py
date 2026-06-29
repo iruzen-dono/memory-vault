@@ -15,12 +15,10 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from .manifest import Manifest, ToolUsage, ArtifactIndex, NarrativeIndex
-from .pack import ContextPack
+from .manifest import ArtifactIndex, Manifest, NarrativeIndex, ToolUsage
 from .narrator import SessionNarrator
-
+from .pack import ContextPack
 
 # Tools that create or modify files — we track these as artifacts
 _ARTIFACT_TOOLS = {"write_file", "patch"}
@@ -301,6 +299,16 @@ class ContextBuilder:
         if started and ended:
             duration_min = int((ended - started) / 60) if ended > started else 0
 
+        # Build tool traces summary
+        tool_traces = {
+            "total_tool_calls": sum(tool_counts.values()),
+            "unique_tools": list(tool_counts.keys()),
+            "by_tool": dict(sorted(tool_counts.items(), key=lambda x: -x[1])),
+            "artifact_tools_used": {
+                t: tool_counts[t] for t in _ARTIFACT_TOOLS if t in tool_counts
+            },
+        }
+
         # Build narrative (template or LLM-compressed)
         if narrate:
             narrator = SessionNarrator()
@@ -315,16 +323,6 @@ class ContextBuilder:
 
         # Build references
         references_md = self._build_references(messages)
-
-        # Build tool traces summary
-        tool_traces = {
-            "total_tool_calls": sum(tool_counts.values()),
-            "unique_tools": list(tool_counts.keys()),
-            "by_tool": dict(sorted(tool_counts.items(), key=lambda x: -x[1])),
-            "artifact_tools_used": {
-                t: tool_counts[t] for t in _ARTIFACT_TOOLS if t in tool_counts
-            },
-        }
 
         # Build manifest
         manifest = Manifest(
