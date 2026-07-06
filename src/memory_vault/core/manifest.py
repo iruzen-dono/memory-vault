@@ -10,9 +10,11 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
-CURRENT_FORMAT_VERSION = "1.0.0"
+CURRENT_FORMAT_VERSION = "1.1.0"
 PACK_TYPE_CONTEXT = "context-pack"
 PACK_TYPE_MEMORY = "memory-pack"  # legacy
+PACK_TYPE_PROJECT = "project-pack"  # captures a whole project state
+PACK_TYPE_DAILY = "daily-pack"  # daily snapshot of sessions/decisions
 
 
 @dataclass
@@ -57,6 +59,16 @@ class Manifest:
     duration_minutes: int = 0
     message_count: int = 0
 
+    # Pack subtype (e.g. "daily-timeline", "project-structure", "project-full")
+    pack_subtype: str = ""
+
+    # Project-specific (used by project-pack)
+    project_name: str = ""
+    project_path: str = ""
+
+    # LLM processing
+    use_llm: bool = False               # True if LLM was used for narrative
+
     # Contents summary
     narrative: NarrativeIndex = field(default_factory=NarrativeIndex)
     artifacts: ArtifactIndex = field(default_factory=ArtifactIndex)
@@ -89,7 +101,7 @@ class Manifest:
         errors: list[str] = []
         if not self.title:
             errors.append("title is required")
-        if self.pack_type not in (PACK_TYPE_CONTEXT, PACK_TYPE_MEMORY):
+        if self.pack_type not in (PACK_TYPE_CONTEXT, PACK_TYPE_MEMORY, PACK_TYPE_PROJECT, PACK_TYPE_DAILY):
             errors.append(f"unknown pack type: {self.pack_type}")
         return errors
 

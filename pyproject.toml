@@ -46,6 +46,7 @@ documentation = "https://github.com/iruzen-dono/memory-vault/docs"
 
 [project.scripts]
 memory-vault = "memory_vault.cli.main:app"
+memory-vault-webhook = "memory_vault.webhook:serve"
 
 [tool.ruff]
 line-length = 250

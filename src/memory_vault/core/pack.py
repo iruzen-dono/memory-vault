@@ -54,6 +54,8 @@ class ContextPack:
     tool_traces: dict = field(default_factory=dict)
     handoff_md: str = ""
     references_md: str = ""
+    protected_data: dict[str, str] = field(default_factory=dict)  # ⚠️ sensitive — secrets, tokens, .env values
+    directory_tree: str = ""  # project directory structure (tree -L 2 output)
 
     # -- Serialisation ------------------------------------------------
 
@@ -124,6 +126,20 @@ class ContextPack:
                         _ensure_lf(self.references_md).encode("utf-8")
                     )
 
+            # 8. Protected data (⚠️ sensitive — clearly marked in manifest)
+            if self.protected_data:
+                protected = {k: "***REDACTED***" for k in self.protected_data}
+                (stage / "protected.json").write_text(
+                    json.dumps(protected, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+            # 9. Directory tree (project context)
+            if self.directory_tree:
+                (stage / "directory-tree.txt").write_bytes(
+                    _ensure_lf(self.directory_tree).encode("utf-8")
+                )
+
             # Create tar.gz from staging directory
             mode = "w:gz" if compress else "w"
             with tarfile.open(path, mode) as tar:
@@ -193,6 +209,17 @@ class ContextPack:
             if "context/references.md" in members:
                 references_md = tar.extractfile("context/references.md").read().decode("utf-8")
 
+            # Protected data (redacted from disk — keys only)
+            protected_data: dict[str, str] = {}
+            if "protected.json" in members:
+                redacted = json.loads(tar.extractfile("protected.json").read())
+                protected_data = redacted  # values are "***REDACTED***" on disk
+
+            # Directory tree
+            directory_tree = ""
+            if "directory-tree.txt" in members:
+                directory_tree = tar.extractfile("directory-tree.txt").read().decode("utf-8")
+
         return cls(
             manifest=manifest,
             narrative_md=narrative_md,
@@ -202,9 +229,46 @@ class ContextPack:
             tool_traces=tool_traces,
             handoff_md=handoff_md,
             references_md=references_md,
+            protected_data=protected_data,
+            directory_tree=directory_tree,
         )
 
     # -- Helpers ------------------------------------------------------
+
+    def restore_to(self, target_dir: str | Path) -> Path:
+        """Extract all artifacts and context to a target directory.
+
+        Useful for restoring a project state from a project-pack
+        or importing artifacts from any pack type.
+
+        Args:
+            target_dir: Directory to restore into.
+
+        Returns:
+            The resolved target directory path.
+        """
+        target = Path(target_dir)
+        target.mkdir(parents=True, exist_ok=True)
+
+        # Extract artifacts
+        for rel_path, source_path in self.artifacts.items():
+            if source_path.exists():
+                dest = target / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(source_path, dest)
+
+        # Write context files
+        if self.handoff_md:
+            (target / "HANDOFF.md").write_text(self.handoff_md, encoding="utf-8")
+        if self.references_md:
+            (target / "REFERENCES.md").write_text(self.references_md, encoding="utf-8")
+        if self.narrative_md:
+            (target / "NARRATIVE.md").write_text(self.narrative_md, encoding="utf-8")
+        if self.directory_tree:
+            (target / "DIRECTORY_TREE.txt").write_text(self.directory_tree, encoding="utf-8")
+
+        return target.resolve()
 
     def summary(self) -> dict:
         """Human-readable summary of the pack."""
@@ -215,6 +279,10 @@ class ContextPack:
             "author": self.manifest.author,
             "tags": self.manifest.tags,
             "pack_type": self.manifest.pack_type,
+            "pack_subtype": self.manifest.pack_subtype,
+            "project_name": self.manifest.project_name,
+            "project_path": self.manifest.project_path,
+            "use_llm": self.manifest.use_llm,
             "source_session_id": self.manifest.source_session_id,
             "message_count": len(self.messages),
             "artifact_count": len(self.artifacts),
@@ -222,6 +290,8 @@ class ContextPack:
             "decisions": len(self.decisions),
             "has_narrative": bool(self.narrative_md),
             "has_handoff": bool(self.handoff_md),
+            "has_protected": bool(self.protected_data),
+            "has_directory_tree": bool(self.directory_tree),
             "format_version": self.manifest.format_version,
             "created_at": self.manifest.created_at,
         }

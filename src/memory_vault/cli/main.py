@@ -15,6 +15,7 @@ import re
 import tarfile
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 import typer
 
@@ -316,6 +317,88 @@ def export(
         typer.echo(f"   Narrated: {'✅' if narrate or deep else '❌'}")
 
 
+# ── build-project: snapshot a project ─────────────────────────────
+
+
+@app.command(name="build-project")
+def build_project(
+    project_dir: str = typer.Argument(..., help="Project directory path"),
+    title: Optional[str] = typer.Option(None, "--title", "-t", help="Pack title"),
+    description: Optional[str] = typer.Option(None, "--description", "-d", help="Pack description"),
+    tags: str = typer.Option("", "--tags", help="Comma-separated tags"),
+    author: str = typer.Option("", "--author", "-a", help="Author name"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
+    include_env: bool = typer.Option(False, "--include-env", help="Capture .env.example files"),
+    tree_depth: int = typer.Option(2, "--tree-depth", help="Directory tree depth"),
+):
+    """Capture a project snapshot as a project-pack.
+
+    Records the file tree, key config files, README, and optional
+    env template. Perfect for onboarding context or backup.
+    """
+    from memory_vault.core.builder import ContextBuilder
+
+    builder = ContextBuilder()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
+    pack = builder.build_project_pack(
+        project_dir=project_dir,
+        title=title,
+        description=description or "",
+        tags=tag_list,
+        author=author,
+        include_env=include_env,
+        tree_depth=tree_depth,
+    )
+
+    if output is None:
+        safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in pack.manifest.title)
+        output = Path.cwd() / f"{safe.lower().replace(' ', '-')}.hermes-memory"
+
+    out_path = pack.write(output)
+    s = pack.summary()
+    typer.echo(f"✅ Project pack → {out_path}")
+    typer.echo(f"   Title:    {s['title']}")
+    typer.echo(f"   Project:  {s.get('project_name', '')}")
+    typer.echo(f"   Files:    {s['artifact_count']} artifacts")
+    typer.echo(f"   Tree:     {'✅' if s.get('has_directory_tree') else '❌'}")
+
+
+# ── build-daily: daily session digest ─────────────────────────────
+
+
+@app.command(name="build-daily")
+def build_daily(
+    date_str: Optional[str] = typer.Option(None, "--date", help="Date in YYYY-MM-DD format (default: today)"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max sessions to include"),
+    description: Optional[str] = typer.Option(None, "--description", "-d", help="Daily pack description"),
+    author: str = typer.Option("", "--author", "-a", help="Author name"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
+    hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
+):
+    """Bundle all sessions from today into a daily context pack.
+
+    Useful for end-of-day backups and daily standup summaries.
+    """
+    from memory_vault.core.builder import ContextBuilder
+
+    builder = ContextBuilder(hermes_home=hermes_home)
+    pack = builder.build_daily_pack(date_str=date_str, limit=limit, description=description or "", author=author)
+
+    date_for_title = date_str or datetime.now().strftime("%Y-%m-%d")
+    if output is None:
+        output = Path.cwd() / f"daily-{date_for_title}.hermes-memory"
+
+    out_path = pack.write(output)
+    s = pack.summary()
+    typer.echo(f"✅ Daily pack → {out_path}")
+    typer.echo(f"   Title:    {s['title']}")
+    typer.echo(f"   Date:     {date_for_title}")
+    typer.echo(f"   Sessions: {s['message_count']}")
+    typer.echo(f"   Messages: {s['message_count']}")
+    typer.echo(f"   Artifacts: {s['artifact_count']}")
+
+
 # ── info: inspect a pack ──────────────────────────────────────────
 
 
@@ -329,12 +412,17 @@ def info(
 
     typer.echo(f"📦 {s['title']}")
     typer.echo(f"   Type:           {s['pack_type']}")
+    if s.get('pack_subtype'):
+        typer.echo(f"   Subtype:        {s['pack_subtype']}")
     typer.echo(f"   Description:    {s['description'] or '—'}")
     typer.echo(f"   Author:         {s['author'] or '—'}")
     typer.echo(f"   Created:        {s['created_at']}")
     typer.echo(f"   Format version: {s['format_version']}")
     typer.echo(f"   Tags:           {', '.join(s['tags']) or '—'}")
+    typer.echo(f"   LLM processed:  {'✅' if s.get('use_llm') else '❌'}")
     typer.echo("")
+    if s.get('project_name'):
+        typer.echo(f"   📁 Project: {s['project_name']} ({s.get('project_path', '')})")
     if s["source_session_id"]:
         typer.echo(f"   🔗 Source session: {s['source_session_id'][:16]}…")
     typer.echo(f"   💬 Messages:        {s['message_count']}")
@@ -347,7 +435,9 @@ def info(
     typer.echo(f"   🧠 Decisions:       {s['decisions']}")
     typer.echo(f"   🛠  Narrative:       {'✅' if s['has_narrative'] else '❌'}")
     typer.echo(f"   🎯 Handoff brief:   {'✅' if s['has_handoff'] else '❌'}")
-
+    typer.echo(f"   🔒 Protected data:  {'✅' if s.get('has_protected') else '❌'}")
+    typer.echo(f"   📂 Directory tree:  {'✅' if s.get('has_directory_tree') else '❌'}")
+    typer.echo("")
 
 # ── import: extract context from a pack ───────────────────────────
 
@@ -357,11 +447,15 @@ def import_pack(
     path: Path = typer.Argument(..., help="Path to .hermes-memory file", exists=True),
     extract_handoff: bool = typer.Option(True, "--handoff/--no-handoff", help="Show handoff brief"),
     list_artifacts: bool = typer.Option(True, "--list-artifacts/--no-artifacts", help="List available artifacts"),
+    restore_to: Optional[Path] = typer.Option(None, "--restore", "-r", help="Extract artifacts to a directory"),
 ):
     """Extract context from a .hermes-memory pack.
 
     Displays the handoff brief, available artifacts, and tool traces
     so the receiving agent can pick up where the session left off.
+
+    Use --restore <dir> to extract artifacts and context to a directory
+    (like unpacking a project from a project-pack).
     """
     pack = ContextPack.read(path)
     s = pack.summary()
@@ -369,6 +463,11 @@ def import_pack(
     typer.echo(f"📦 {s['title']}")
     typer.echo(f"   By: {s['author'] or 'unknown'} · {s['created_at']}")
     typer.echo("")
+
+    if restore_to:
+        target = pack.restore_to(restore_to)
+        typer.echo(f"📂 Restored to: {target}")
+        typer.echo("")
 
     if extract_handoff and pack.handoff_md:
         typer.echo("─" * 50)

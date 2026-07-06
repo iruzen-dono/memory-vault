@@ -16,7 +16,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from .manifest import ArtifactIndex, Manifest, NarrativeIndex, ToolUsage
+from .manifest import ArtifactIndex, Manifest, NarrativeIndex, ToolUsage, PACK_TYPE_DAILY, PACK_TYPE_PROJECT
 from .narrator import SessionNarrator
 from .pack import ContextPack
 
@@ -360,6 +360,226 @@ class ContextBuilder:
             handoff_md=handoff_md,
             references_md=references_md,
         )
+
+    # -- Project pack builder ------------------------------------------
+
+    def build_project_pack(
+        self,
+        project_dir: str,
+        title: str | None = None,
+        description: str = "",
+        tags: list[str] | None = None,
+        author: str = "",
+        include_env: bool = False,
+        tree_depth: int = 2,
+    ) -> ContextPack:
+        """Capture a project snapshot as a project-pack.
+
+        Records the file tree, key files (README, config), and env template.
+        Useful for onboarding context or project backup.
+        """
+        proj = Path(project_dir).resolve()
+        proj_name = title or proj.name
+
+        # Generate directory tree
+        tree = self._generate_tree(proj, depth=tree_depth)
+
+        # Collect key files as artifacts
+        artifacts: dict[str, Path] = {}
+        key_patterns = ["README.md", "README.txt", "package.json", "Cargo.toml",
+                        "pyproject.toml", "composer.json", "Makefile",
+                        ".env.example", ".env.sample", "docker-compose.yml",
+                        "Dockerfile", "tsconfig.json", ".editorconfig"]
+
+        if include_env:
+            key_patterns.extend([".env.example", ".env.sample"])
+
+        for pattern in key_patterns:
+            for f in proj.rglob(pattern):
+                if f.is_file() and ".git" not in f.parts:
+                    rel = f.relative_to(proj)
+                    artifacts[str(rel)] = f
+
+        # Also include config directories
+        for cfg_dir in [".github", ".vscode", ".cursor"]:
+            cfg_path = proj / cfg_dir
+            if cfg_path.is_dir():
+                for f in sorted(cfg_path.rglob("*")):
+                    if f.is_file() and ".git" not in f.parts:
+                        rel = f.relative_to(proj)
+                        artifacts[str(rel)] = f
+
+        # Read README as narrative (if exists)
+        readme = proj / "README.md"
+        narrative = ""
+        if readme.is_file():
+            narrative = f"# {proj_name}\n\n{readme.read_text(encoding='utf-8', errors='replace')}"
+        else:
+            narrative = f"# {proj_name}\n\n*No README found.*\n"
+
+        # Build manifest
+        manifest = Manifest(
+            title=proj_name,
+            description=description or f"Project snapshot: {proj_name}",
+            tags=tags or [],
+            author=author,
+            pack_type=PACK_TYPE_PROJECT,
+            pack_subtype="project-structure",
+            project_name=proj_name,
+            project_path=str(proj),
+            artifacts=ArtifactIndex(
+                count=len(artifacts),
+                files=sorted(artifacts.keys()),
+            ),
+            source_commit=self._read_git_commit(),
+        )
+
+        return ContextPack(
+            manifest=manifest,
+            narrative_md=narrative,
+            artifacts=artifacts,
+            tool_traces={"total_tool_calls": 0, "unique_tools": [], "by_tool": {}},
+            handoff_md=f"# Project Context: {proj_name}\n\n"
+                       f"Project directory: `{proj}`\n\n"
+                       f"Key files captured. Use `memory-vault import --restore <dir>` "
+                       f"to restore artifacts locally.",
+            references_md="",
+            directory_tree=tree,
+        )
+
+    # -- Daily pack builder --------------------------------------------
+
+    def build_daily_pack(
+        self,
+        date_str: str | None = None,
+        limit: int = 50,
+        description: str = "",
+        author: str = "",
+    ) -> ContextPack:
+        """Bundle today's sessions into a daily context pack.
+
+        Scans Hermes sessions for today and merges their context
+        into a single daily-pack.
+        """
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                target_date = datetime.now().date()
+        else:
+            target_date = datetime.now().date()
+
+        # Get all sessions
+        all_sessions = self.list_sessions(limit=limit)
+
+        # Filter sessions from target date
+        day_sessions = []
+        for s in all_sessions:
+            started = s.get("started_at")
+            if started is None:
+                continue
+            try:
+                ts = int(started) if isinstance(started, (int, float)) else 0
+                session_date = datetime.fromtimestamp(ts).date()
+                if session_date == target_date:
+                    day_sessions.append(s)
+            except (ValueError, OSError):
+                continue
+
+        title = f"Daily Digest — {target_date.isoformat()}"
+
+        # Merge session info
+        total_msgs = sum(s.get("message_count", 0) for s in day_sessions)
+        total_tools = sum(s.get("tool_call_count", 0) for s in day_sessions)
+        sources = list(set(s.get("source", "?") for s in day_sessions))
+        models = list(set(s.get("model", "?") for s in day_sessions))
+
+        # Build narrative
+        lines = [f"# {title}", ""]
+        lines.append(f"**Sessions:** {len(day_sessions)}")
+        lines.append(f"**Messages:** {total_msgs}")
+        lines.append(f"**Tool calls:** {total_tools}")
+        lines.append(f"**Sources:** {', '.join(sources)}")
+        if models:
+            lines.append(f"**Models:** {', '.join(models)}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        for i, s in enumerate(day_sessions, 1):
+            sid = s["id"][:16] if s.get("id") else "?"
+            stitle = s.get("title", "Untitled")
+            lines.append(f"## {i}. {stitle}")
+            lines.append(f"   📍 {s.get('source', '?')} · {s.get('model', '?')}")
+            lines.append(f"   Msgs: {s.get('message_count', 0)} · Tools: {s.get('tool_call_count', 0)}")
+            lines.append(f"   🆔 {sid}")
+            lines.append("")
+
+        narrative = "\n".join(lines)
+
+        handoff = (
+            f"# Handoff: {title}\n\n"
+            f"This daily pack captures {len(day_sessions)} session(s) "
+            f"from {target_date.isoformat()}.\n\n"
+            f"Total messages: {total_msgs} · Tool calls: {total_tools}\n\n"
+            f"Review narrative.md for the full digest."
+        )
+
+        manifest = Manifest(
+            title=title,
+            description=description or f"Daily session digest for {target_date.isoformat()}",
+            tags=["daily", target_date.isoformat()],
+            author=author,
+            pack_type=PACK_TYPE_DAILY,
+            pack_subtype="daily-timeline",
+            message_count=total_msgs,
+            source_commit=self._read_git_commit(),
+        )
+
+        return ContextPack(
+            manifest=manifest,
+            narrative_md=narrative,
+            messages=[],
+            decisions=[],
+            artifacts={},
+            tool_traces={"total_tool_calls": total_tools, "unique_tools": [], "by_tool": {}},
+            handoff_md=handoff,
+            references_md="",
+        )
+
+    # -- Directory tree generator --------------------------------------
+
+    @staticmethod
+    def _generate_tree(directory: Path, depth: int = 2) -> str:
+        """Generate a directory tree string up to a given depth."""
+        lines = [f"{directory.name}/"]
+        prefix = "    "
+
+        def _walk(dirpath: Path, level: int = 0):
+            if level > depth:
+                return
+            try:
+                entries = sorted(dirpath.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+            except PermissionError:
+                return
+
+            for i, entry in enumerate(entries):
+                if entry.name.startswith(".") and entry.name not in (".github", ".vscode", ".cursor"):
+                    continue
+                if entry.name == "__pycache__":
+                    continue
+                if ".git" in entry.parts:
+                    continue
+
+                is_last = i == len(entries) - 1
+                branch = "└── " if is_last else "├── "
+                lines.append(prefix * level + branch + entry.name)
+
+                if entry.is_dir():
+                    _walk(entry, level + 1)
+
+        _walk(directory)
+        return "\n".join(lines)
 
     # -- Narrative generation -----------------------------------------
 
