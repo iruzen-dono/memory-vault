@@ -16,18 +16,14 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
-
 
 # ── API functions (import memory-vault at module level) ────────────
 
 try:
     from memory_vault.core.builder import ContextBuilder
-    from memory_vault.core.pack import ContextPack
 
     _HAVE_VAULT = True
 except ImportError:
@@ -221,11 +217,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 
 def serve(host: str = "127.0.0.1", port: int = 9876):
-    print(f"🧠 Memory Vault Webhook")
+    print("🧠 Memory Vault Webhook")
     print(f"   Endpoint: http://{host}:{port}/webhook/status")
     print(f"   Auto-pack dir: {_AUTO_DIR}")
     print(f"   memory-vault installed: {_HAVE_VAULT}")
-    print(f"   Listening...")
+    print("   Listening...")
 
     server = HTTPServer((host, port), WebhookHandler)
     try:
