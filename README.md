@@ -2,7 +2,28 @@
 
 > **From agent session to shareable context in one command.**
 
+[![PyPI version](https://img.shields.io/pypi/v/memory-vault.svg?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/memory-vault/)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)
+
 Memory Vault turns any Hermes session into a portable `.hermes-memory` **context pack** — the conversation, the tool traces, the artifacts created, and a handoff brief that lets another agent pick up exactly where you left off.
+
+## Installation
+
+```bash
+pip install memory-vault
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/iruzen-dono/memory-vault.git
+cd memory-vault
+pip install -e .
+```
+
+Requires Python 3.11+. The CLI exposes the `memory-vault` command:
 
 ```bash
 # Launch the interactive TUI browser
