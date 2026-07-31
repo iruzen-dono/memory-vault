@@ -61,7 +61,7 @@ class HermesSessionDB:
                 sql += "AND source = ? "
                 params.append(source)
             sql += "ORDER BY started_at DESC LIMIT ?"
-            params.append(limit)
+            params.append(str(limit))
 
             rows = conn.execute(sql, params).fetchall()
             return [dict(r) for r in rows]

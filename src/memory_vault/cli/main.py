@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 import typer
+
 from memory_vault import __version__
 from memory_vault.core.builder import ContextBuilder
 from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
@@ -610,7 +611,10 @@ def _search_pack(
                 continue
 
             try:
-                content = tar.extractfile(target).read().decode("utf-8", errors="replace")
+                content_member = tar.extractfile(target)
+                if content_member is None:
+                    continue
+                content = content_member.read().decode("utf-8", errors="replace")
             except Exception:
                 continue
 

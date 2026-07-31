@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
+from memory_vault.core.builder import ContextBuilder
 from memory_vault.core.llm import (
     LLMProvider,
     get_provider,

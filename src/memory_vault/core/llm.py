@@ -382,9 +382,9 @@ def get_provider(name: str | None = None) -> LLMProvider:
 
     # Auto-detect by availability
     for p in ("cloudflare", "anthropic", "openai"):
-        candidate = _PROVIDERS.get(p)
-        if candidate and candidate.available():
-            return candidate
+        auto_candidate = _PROVIDERS.get(p)
+        if auto_candidate and auto_candidate.available():
+            return auto_candidate
 
     # Fallback: Cloudflare (allows template fallback downstream)
     return _PROVIDERS.get("cloudflare", CloudflareAI())

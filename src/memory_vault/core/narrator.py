@@ -203,7 +203,7 @@ taking over this task right now."""
         # Extract sections by markdown headings
         sections = {}
         current_section = "preamble"
-        current_lines = []
+        current_lines: list[str] = []
 
         for line in response.split("\n"):
             heading_match = re.match(r"^###?\s+(.+)", line.strip())

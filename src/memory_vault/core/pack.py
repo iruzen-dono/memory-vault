@@ -26,10 +26,19 @@ import tarfile
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from .manifest import Manifest
 
 HERMES_MEMORY_EXTENSION = ".hermes-memory"
+
+
+def _member_bytes(tar: tarfile.TarFile, name: str) -> bytes:
+    """Read a tar member as bytes, raising a clear error if missing."""
+    member = tar.extractfile(name)
+    if member is None:
+        raise ValueError(f"Missing pack member: {name}")
+    return member.read()
 
 
 def _ensure_lf(text: str) -> str:
@@ -141,8 +150,8 @@ class ContextPack:
                 )
 
             # Create tar.gz from staging directory
-            mode = "w:gz" if compress else "w"
-            with tarfile.open(path, mode) as tar:
+            mode: Literal["w:gz", "w"] = "w:gz" if compress else "w"
+            with tarfile.open(str(path), mode) as tar:
                 for item in stage.iterdir():
                     tar.add(item, arcname=item.name, recursive=True)
 
@@ -162,28 +171,30 @@ class ContextPack:
             if "manifest.json" not in members:
                 raise ValueError(f"Invalid pack: missing manifest.json in {path}")
 
-            manifest_data = json.loads(tar.extractfile("manifest.json").read())
+            manifest_member = tar.extractfile("manifest.json")
+            assert manifest_member is not None
+            manifest_data = json.loads(manifest_member.read())
             manifest = Manifest.from_dict(manifest_data)
 
             # Narrative
             narrative_md = ""
             if "narrative.md" in members:
-                narrative_md = tar.extractfile("narrative.md").read().decode("utf-8")
+                narrative_md = _member_bytes(tar, "narrative.md").decode("utf-8")
 
             # Messages
             messages = []
             if "messages.json" in members:
-                messages = json.loads(tar.extractfile("messages.json").read())
+                messages = json.loads(_member_bytes(tar, "messages.json"))
 
             # Decisions
             decisions = []
             if "decisions.json" in members:
-                decisions = json.loads(tar.extractfile("decisions.json").read())
+                decisions = json.loads(_member_bytes(tar, "decisions.json"))
 
             # Tool traces
             tool_traces = {}
             if "tool-traces.json" in members:
-                tool_traces = json.loads(tar.extractfile("tool-traces.json").read())
+                tool_traces = json.loads(_member_bytes(tar, "tool-traces.json"))
 
             # Artifacts — extract to a single temp dir
             artifacts: dict[str, Path] = {}
@@ -198,27 +209,27 @@ class ContextPack:
                     rel_path = str(Path(m.name).relative_to("artifacts")).replace("\\", "/")
                     dest = artifact_root / rel_path
                     dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(tar.extractfile(m).read())
+                    dest.write_bytes(_member_bytes(tar, m.name))
                     artifacts[rel_path] = dest
 
             # Context
             handoff_md = ""
             references_md = ""
             if "context/handoff.md" in members:
-                handoff_md = tar.extractfile("context/handoff.md").read().decode("utf-8")
+                handoff_md = _member_bytes(tar, "context/handoff.md").decode("utf-8")
             if "context/references.md" in members:
-                references_md = tar.extractfile("context/references.md").read().decode("utf-8")
+                references_md = _member_bytes(tar, "context/references.md").decode("utf-8")
 
             # Protected data (redacted from disk — keys only)
             protected_data: dict[str, str] = {}
             if "protected.json" in members:
-                redacted = json.loads(tar.extractfile("protected.json").read())
+                redacted = json.loads(_member_bytes(tar, "protected.json"))
                 protected_data = redacted  # values are "***REDACTED***" on disk
 
             # Directory tree
             directory_tree = ""
             if "directory-tree.txt" in members:
-                directory_tree = tar.extractfile("directory-tree.txt").read().decode("utf-8")
+                directory_tree = _member_bytes(tar, "directory-tree.txt").decode("utf-8")
 
         return cls(
             manifest=manifest,
