@@ -13,12 +13,10 @@ from __future__ import annotations
 
 import re
 import tarfile
-from pathlib import Path
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 import typer
-
 from memory_vault import __version__
 from memory_vault.core.builder import ContextBuilder
 from memory_vault.core.pack import HERMES_MEMORY_EXTENSION, ContextPack
@@ -225,8 +223,8 @@ def diff(
 @app.command(name="list-sessions")
 def list_sessions(
     limit: int = typer.Option(20, "--limit", "-n", help="Max sessions to show"),
-    search: Optional[str] = typer.Option(None, "--search", "-s", help="Search sessions by keyword"),
-    hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
+    search: str | None = typer.Option(None, "--search", "-s", help="Search sessions by keyword"),
+    hermes_home: str | None = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
 ):
     """Browse recent Hermes sessions available for packaging."""
     builder = ContextBuilder(hermes_home=hermes_home)
@@ -263,14 +261,14 @@ def list_sessions(
 @app.command()
 def export(
     session_id: str = typer.Argument(..., help="Hermes session ID to package"),
-    title: Optional[str] = typer.Option(None, "--title", "-t", help="Pack title (default: session title)"),
+    title: str | None = typer.Option(None, "--title", "-t", help="Pack title (default: session title)"),
     description: str = typer.Option("", "--description", "-d", help="Short description of the action"),
     tags: str = typer.Option("", "--tags", help="Comma-separated tags"),
     author: str = typer.Option("", "--author", "-a", help="Author name"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
     no_artifacts: bool = typer.Option(False, "--no-artifacts", help="Exclude file artifacts from the pack"),
-    hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
-    project_root: Optional[str] = typer.Option(None, "--project-root", "-r", help="Base directory for artifact relative paths"),
+    hermes_home: str | None = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
+    project_root: str | None = typer.Option(None, "--project-root", "-r", help="Base directory for artifact relative paths"),
     narrate: bool = typer.Option(False, "--narrate", "-n", help="Compress narrative with LLM (requires Cloudflare Workers AI credentials)"),
     deep: bool = typer.Option(False, "--deep", help="Use deep reasoning model (GLM-5.2, slower but richer). Implies --narrate."),
 ):
@@ -323,11 +321,11 @@ def export(
 @app.command(name="build-project")
 def build_project(
     project_dir: str = typer.Argument(..., help="Project directory path"),
-    title: Optional[str] = typer.Option(None, "--title", "-t", help="Pack title"),
-    description: Optional[str] = typer.Option(None, "--description", "-d", help="Pack description"),
+    title: str | None = typer.Option(None, "--title", "-t", help="Pack title"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Pack description"),
     tags: str = typer.Option("", "--tags", help="Comma-separated tags"),
     author: str = typer.Option("", "--author", "-a", help="Author name"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
     include_env: bool = typer.Option(False, "--include-env", help="Capture .env.example files"),
     tree_depth: int = typer.Option(2, "--tree-depth", help="Directory tree depth"),
 ):
@@ -369,12 +367,12 @@ def build_project(
 
 @app.command(name="build-daily")
 def build_daily(
-    date_str: Optional[str] = typer.Option(None, "--date", help="Date in YYYY-MM-DD format (default: today)"),
+    date_str: str | None = typer.Option(None, "--date", help="Date in YYYY-MM-DD format (default: today)"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max sessions to include"),
-    description: Optional[str] = typer.Option(None, "--description", "-d", help="Daily pack description"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Daily pack description"),
     author: str = typer.Option("", "--author", "-a", help="Author name"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
-    hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output .hermes-memory file path"),
+    hermes_home: str | None = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
 ):
     """Bundle all sessions from today into a daily context pack.
 
@@ -447,7 +445,7 @@ def import_pack(
     path: Path = typer.Argument(..., help="Path to .hermes-memory file", exists=True),
     extract_handoff: bool = typer.Option(True, "--handoff/--no-handoff", help="Show handoff brief"),
     list_artifacts: bool = typer.Option(True, "--list-artifacts/--no-artifacts", help="List available artifacts"),
-    restore_to: Optional[Path] = typer.Option(None, "--restore", "-r", help="Extract artifacts to a directory"),
+    restore_to: Path | None = typer.Option(None, "--restore", "-r", help="Extract artifacts to a directory"),
 ):
     """Extract context from a .hermes-memory pack.
 
@@ -651,7 +649,7 @@ def _search_pack(
 def render(
     path: Path = typer.Argument(..., help="Path to .hermes-memory file", exists=True),
     format: str = typer.Option("markdown", "--format", "-f", help="Output format: markdown or html"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file path"),
 ):
     """Render a context pack as a human-readable document (markdown or HTML)."""
     pack = ContextPack.read(path)
@@ -691,9 +689,9 @@ def render(
 def index(
     force: bool = typer.Option(False, "--force", "-f", help="Re-index already-indexed sessions"),
     new_only: bool = typer.Option(False, "--new", "-n", help="Only index new sessions (skip indexed)"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="LLM model override (default: MEMORY_VAULT_INDEX_MODEL env or llama-3.3-70b)"),
+    model: str | None = typer.Option(None, "--model", "-m", help="LLM model override (default: MEMORY_VAULT_INDEX_MODEL env or llama-3.3-70b)"),
     workers: int = typer.Option(1, "--workers", "-w", help="Number of parallel workers (1 = sequential)"),
-    hermes_home: Optional[str] = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
+    hermes_home: str | None = typer.Option(None, "--hermes-home", help="Custom Hermes home path"),
 ):
     """Scan Hermes sessions and generate descriptive titles + summaries via LLM.
 
