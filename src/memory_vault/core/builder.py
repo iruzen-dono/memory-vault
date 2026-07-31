@@ -16,7 +16,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from .manifest import ArtifactIndex, Manifest, NarrativeIndex, ToolUsage, PACK_TYPE_DAILY, PACK_TYPE_PROJECT
+from .manifest import (
+    PACK_TYPE_DAILY,
+    PACK_TYPE_PROJECT,
+    ArtifactIndex,
+    Manifest,
+    NarrativeIndex,
+    ToolUsage,
+)
 from .narrator import SessionNarrator
 from .pack import ContextPack
 
