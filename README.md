@@ -259,6 +259,29 @@ src/memory_vault/
 │   └── tui.py            # MemoryVaultTUI — Textual-based interactive browser
 ```
 
+## Related tools
+
+Part of a small family of agent-context tools:
+
+| Tool | What it does |
+|---|---|
+| **[hermes-project-oracle](https://github.com/iruzen-dono/hermes-project-oracle)** | Scans a codebase into `AGENTS.md` / `CLAUDE.md`, detects when that context has drifted from the code, and scores an existing context file for unfalsifiable rules |
+| **hermes-memory-vault** (this repo) | Packages an agent session into a portable `.hermes-memory` pack another agent can pick up |
+
+They meet in the middle: `oracle-vault` pushes a project scan into an Obsidian
+vault, and Memory Vault exports the *conversation* around that work. Same idea
+from two angles — context that survives the session that produced it.
+
+## Why minimal context
+
+Gloaguen et al. (ETH Zurich SRI / LogicStar, *ICLR 2026 Workshop on Memory for
+LLM-Based Agentic Systems*) measured context files across coding agents and
+LLMs: no improvement in task success rates, and over 20 % more inference cost.
+
+That is why a Memory Vault pack carries a **handoff brief and the artifacts**,
+not the entire transcript verbatim — and why `oracle-lint` exists to measure
+the noise in files that are already written.
+
 ## License
 
 MIT
