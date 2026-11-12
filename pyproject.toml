@@ -1,25 +1,25 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [project]
-name = "memory-vault"
-version = "0.1.0"
+name = "hermes-memory-vault"
+version = "0.2.0"
 description = "Portable Context Protocol — package AI agent sessions into portable .hermes-memory packs"
 readme = "README.md"
 authors = [
-    { name = "iruzen", email = "iruzen@github.com" },
+    { name = "Jules Zhou", email = "juleszhou01@gmail.com" },
 ]
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 keywords = ["hermes", "ai-agent", "memory", "portable", "open-source"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -47,9 +47,11 @@ tui = [
 all = ["memory-vault[vault,tui]"]
 
 [project.urls]
-homepage = "https://github.com/iruzen-dono/memory-vault"
-repository = "https://github.com/iruzen-dono/memory-vault"
-documentation = "https://github.com/iruzen-dono/memory-vault/docs"
+Homepage = "https://github.com/iruzen-dono/memory-vault"
+Repository = "https://github.com/iruzen-dono/memory-vault"
+Issues = "https://github.com/iruzen-dono/memory-vault/issues"
+Documentation = "https://github.com/iruzen-dono/memory-vault/blob/master/docs/ARCHITECTURE.md"
+Changelog = "https://github.com/iruzen-dono/memory-vault/blob/master/CHANGELOG.md"
 
 [project.scripts]
 memory-vault = "memory_vault.cli.main:app"

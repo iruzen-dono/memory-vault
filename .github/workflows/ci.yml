@@ -44,3 +44,35 @@ jobs:
 
       - name: Test (pytest)
         run: uv run pytest tests/ -v
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Validate metadata
+        run: uvx twine check dist/*
+
+      - name: Install the wheel in a clean venv and smoke-test
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          # The CLI exposes --help; verify the command tree renders.
+          # (no --version in the smoke test: the typer flag takes a value)
+          /tmp/clean/bin/memory-vault --help > /dev/null
+          # The webhook entry point starts a blocking HTTP server, so it has no
+          # --help. Import the module instead of invoking the command.
+          /tmp/clean/bin/python -c "import memory_vault.webhook; assert callable(memory_vault.webhook.serve)"

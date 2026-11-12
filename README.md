@@ -2,7 +2,9 @@
 
 > **From agent session to shareable context in one command.**
 
-[![PyPI version](https://img.shields.io/pypi/v/memory-vault.svg?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/memory-vault/)
+[![CI](https://github.com/iruzen-dono/memory-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/iruzen-dono/memory-vault/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/hermes-memory-vault.svg?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/hermes-memory-vault/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/hermes-memory-vault.svg?style=flat-square)](https://pypi.org/project/hermes-memory-vault/)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)
@@ -12,8 +14,14 @@ Memory Vault turns any Hermes session into a portable `.hermes-memory` **context
 ## Installation
 
 ```bash
-pip install memory-vault
+pipx install hermes-memory-vault
+# or
+pip install hermes-memory-vault
 ```
+
+> The distribution is named **`hermes-memory-vault`** because `memory-vault`
+> is already taken on PyPI by an unrelated project. The package you import is
+> still `memory_vault`, and the command is still `memory-vault`.
 
 Or install from source:
 
