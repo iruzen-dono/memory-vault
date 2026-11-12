@@ -1,0 +1,56 @@
+name: Publish to PyPI
+
+# Trusted Publishing (PEP 740 / OIDC): no API token is stored anywhere.
+# Requires a pending or existing publisher configured on PyPI:
+#   PyPI → Account → Publishing → Add a publisher
+#     PyPI Project Name : hermes-memory-vault
+#     Owner             : iruzen-dono
+#     Repository        : memory-vault
+#     Workflow name     : publish.yml
+#     Environment       : pypi
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Validate metadata
+        run: uvx twine check dist/*
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/hermes-memory-vault/
+    permissions:
+      id-token: write # required for Trusted Publishing
+    steps:
+      - name: Download artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
