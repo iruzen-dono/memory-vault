@@ -70,5 +70,9 @@ jobs:
         run: |
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install dist/*.whl
+          # The CLI exposes --help; verify the command tree renders.
+          # (no --version in the smoke test: the typer flag takes a value)
           /tmp/clean/bin/memory-vault --help > /dev/null
-          /tmp/clean/bin/memory-vault-webhook --help > /dev/null || true
+          # The webhook entry point starts a blocking HTTP server, so it has no
+          # --help. Import the module instead of invoking the command.
+          /tmp/clean/bin/python -c "import memory_vault.webhook; assert callable(memory_vault.webhook.serve)"
