@@ -265,7 +265,7 @@ Part of a small family of agent-context tools:
 
 | Tool | What it does |
 |---|---|
-| **[hermes-project-oracle](https://github.com/iruzen-dono/hermes-project-oracle)** | Scans a codebase into `AGENTS.md` / `CLAUDE.md`, detects when that context has drifted from the code, and scores an existing context file for unfalsifiable rules |
+| **[project-oracle](https://github.com/iruzen-dono/project-oracle)** | Scans a codebase into `AGENTS.md` / `CLAUDE.md`, detects when that context has drifted from the code, and scores an existing context file for unfalsifiable rules |
 | **hermes-memory-vault** (this repo) | Packages an agent session into a portable `.hermes-memory` pack another agent can pick up |
 
 They meet in the middle: `oracle-vault` pushes a project scan into an Obsidian
